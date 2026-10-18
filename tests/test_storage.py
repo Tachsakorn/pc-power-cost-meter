@@ -170,11 +170,18 @@ def test_atomic_write_leaves_no_tmp(tmp_path: Path) -> None:
     assert [p.name for p in tmp_path.iterdir()] == ["state.json"]
 
 
-def test_failed_write_keeps_old_file_and_cleans_up(tmp_path: Path) -> None:
+def test_failed_rename_keeps_old_file_and_removes_tmp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "state.json"
     atomic_write_json(target, {"schema": 1, "cost_thb": 1.5})
-    with pytest.raises(TypeError):
-        atomic_write_json(target, {"schema": 1, "cost_thb": object()})
+
+    def refuse(src: object, dst: object) -> None:
+        raise OSError("target is locked")
+
+    monkeypatch.setattr(storage.os, "replace", refuse)
+    with pytest.raises(OSError, match="locked"):
+        atomic_write_json(target, {"schema": 1, "cost_thb": 2.5})
     assert json.loads(target.read_text())["cost_thb"] == 1.5
     assert [p.name for p in tmp_path.iterdir()] == ["state.json"]
 
