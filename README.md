@@ -112,7 +112,7 @@ each part of the PC when it starts.
 | AMD discrete GPU | AMD Display Library (ADL) PMLog sensor `PMLOG_BOARD_POWER`, the total board power | Estimate from 3D engine load |
 | NVIDIA GPU | NVML power usage through NVIDIA's `nvidia-ml-py` bindings | Estimate from 3D engine load |
 | Laptop on battery | Battery discharge rate reported by the battery driver | Component sum below |
-| Motherboard, RAM, drives, fans | Not measured | Fixed value (*Other components*) |
+| Motherboard, RAM, drives, fans | Not measured; learned on battery on a laptop | Fixed value (*Other components*) |
 | Monitor, speakers | Not measured; powered separately | Fixed value you add (*Monitor & extras*) |
 
 Integrated and software graphics adapters are identified with Microsoft's DXCore API and left out
@@ -141,6 +141,21 @@ later when the battery is recharged, so the charging loss is included:
 ```math
 P_{\mathrm{wall}} = \frac{\lvert P_{\mathrm{battery}} \rvert}{\eta_{\mathrm{charge}}} + P_{\mathrm{extra}}
 ```
+
+On a laptop, the battery also corrects the fixed *Other components* value. Whatever the discharge
+rate shows beyond the CPU reading and any discrete GPU reading is drawn by the rest of the laptop:
+screen, memory, storage, Wi-Fi. The app averages that remainder, limited to 0–150 W, with a
+two-minute time constant:
+
+```math
+P_{\mathrm{other}} \leftarrow P_{\mathrm{other}} + \frac{\Delta t}{120\,\mathrm{s} + \Delta t}
+\left( P_{\mathrm{battery}} - P_{\mathrm{cpu}} - P_{\mathrm{gpu}} - P_{\mathrm{other}} \right)
+```
+
+After a minute on battery, the plugged-in breakdown uses this value, marked *learned on battery*,
+instead of the default. If you set *Other components* yourself in Advanced settings, your value
+is used. The learned value is kept in `state.json`, so it survives restarts and a reset of the
+total.
 
 When CPU or GPU power cannot be measured, it is estimated from utilisation $u$ (0 to 1) and the TDP
 values in Advanced settings. Each part has an idle floor plus a share that grows linearly with load:
@@ -223,8 +238,8 @@ It is not a substitute for a plug-in power meter.
 - **CPU power is self-reported.** RAPL is the processor's own report of its package power, not an
   external measurement, and it can differ from what a wall meter attributes to the CPU.
 - **Other components are estimated.** Motherboard, RAM, drives and fans are a fixed number
-  (25 W desktop, 10 W laptop by default). Power-supply efficiency is also a fixed number, while a
-  real PSU's efficiency changes with load.
+  (25 W desktop, 10 W laptop by default) until a laptop has run on battery for a minute.
+  Power-supply efficiency is also a fixed number, while a real PSU's efficiency changes with load.
 - **Estimates are rough.** When a part falls back to its utilisation estimate, its watts depend on
   the TDP values you enter and a straight-line model, and can be well off for a particular CPU or
   GPU. The app shows "Estimates only on this PC" when nothing is measured.
@@ -264,6 +279,7 @@ and starts with default settings.
 | PC | Result |
 |---|---|
 | Desktop: AMD Ryzen 5 5600, AMD Radeon RX 7600, Windows 11 25H2 | Sensor check passed: CPU measured via RAPL, GPU measured via ADL |
+| Laptop: AMD Ryzen 5 3500U, AMD Radeon Vega 8 (integrated only), Windows 11 25H2 | CPU measured via RAPL, battery discharge measured, no discrete GPU (correctly not counted) |
 | Laptop: AMD Ryzen AI, NVIDIA GeForce RTX 5070 Laptop GPU | Not yet verified |
 
 ## Privacy
@@ -274,7 +290,7 @@ no crash reports. It reads hardware sensors and writes only the files below.
 | File | Contents | When it is written |
 |---|---|---|
 | `config.json` | Your settings: meter type, prices, hardware values, theme, hours per day, extra holidays | When you save settings, switch theme or change hours per day |
-| `state.json` | Total cost, energy and measured time | Every 30 seconds, after a reset, when the app closes, and when Windows shuts down or logs off |
+| `state.json` | Total cost, energy and measured time; on a laptop, the *Other components* value learned on battery | Every 30 seconds, after a reset, when the app closes, and when Windows shuts down or logs off |
 | `power-meter.log`, `power-meter.log.1`, `power-meter.log.2` | App version, sensors that are unavailable, sources that failed or recovered, and errors | When those events happen; each file is capped at 256 KB |
 | `config.json.bak`, `state.json.bak` | A previous file that could not be read, kept for inspection | Only if a file was damaged |
 

@@ -162,6 +162,16 @@ P_wall = |P_battery| / η_charge + P_extra
 
 The energy drawn from the battery is paid for later, when it is recharged, so charging losses count.
 
+**Learned `P_other` (laptops).** On battery, every sample also yields
+
+```
+residual = clamp(P_battery − P_cpu − P_gpu(discrete only), 0, 150 W)
+```
+
+The discrete GPU term follows the same presence rule as the breakdown: it is 0 when DXCore found no discrete GPU and no GPU is measured. Screen, storage, Wi-Fi, RAM and any CPU under-reporting all land in the residual. It is smoothed with an exponential moving average, `α = Δt / (120 s + Δt)`, with `Δt` from the model's monotonic clock between consecutive battery samples; samples with `Δt ≤ 0` or `Δt > 5 s` are skipped, and time plugged in breaks the chain. The average starts from zero and is divided by its accumulated weight `1 − Π(1 − α)`, so the first minute is a time-weighted mean of its samples rather than dominated by the first one. The value becomes usable after 60 s of accumulated battery samples and keeps updating on battery after that.
+
+Plugged in, the learned value replaces `P_other` (in `P_dc` and in `P_peak`), shown as `Other … learned on battery`, only while `other_w` still equals the profile default; a value set under Advanced settings wins. The profile default is passed to the model explicitly. Desktops never learn: they have no battery, and a learned value in `state.json` is ignored without the laptop profile.
+
 | Parameter | Desktop default | Laptop default | Range |
 |---|---|---|---|
 | `P_other` (board, RAM, storage, fans) | 25 W | 10 W | 0–150 W |
@@ -320,7 +330,7 @@ The light-mode accents are darker than the original palette's `#27AE60`/`#2980B9
 Two files in the same folder:
 
 - `config.json`: user settings. Written when settings are saved, when the theme button is used, and when the hours stepper changes.
-- `state.json`: accumulated cost, energy, and elapsed time. Written every 30 s, right after a reset, on close, and when Windows signals a shutdown or log-off (Tk's `WM_SAVE_YOURSELF`), since the process may then end without a close event. Every write happens on the sampler thread.
+- `state.json`: accumulated cost, energy, and elapsed time, plus an optional `learned_other_w` (the learned `P_other`, §4). The key is left out until a value has been learned; a missing, non-numeric, or out-of-range (outside 0–150 W) value loads as "not learned" without affecting the totals. Resetting the total keeps it. Written every 30 s, right after a reset, on close, and when Windows signals a shutdown or log-off (Tk's `WM_SAVE_YOURSELF`), since the process may then end without a close event. Every write happens on the sampler thread.
 
 **Location:** the folder containing the `.exe` (`sys.executable` when frozen, not the PyInstaller temp folder). If that folder is not writable, use `%APPDATA%\PCPowerCostMeter\`. The resolved location is shown under Advanced settings.
 
