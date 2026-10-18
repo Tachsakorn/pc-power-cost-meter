@@ -47,8 +47,6 @@ def build_view_model(state: MeterState, settings: Settings) -> MainViewModel:
     else:
         power, per_hour, usage_label, usage_fraction, details = NO_VALUE, "", "", 0.0, ()
 
-    # Projected from the current hours setting rather than state.monthly_thb, so the
-    # figure follows the hours spinner immediately instead of on the sampler's next tick.
     projected = monthly_cost(state.session, settings.hours_per_day)
 
     notice = None

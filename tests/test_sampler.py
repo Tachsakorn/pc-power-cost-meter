@@ -146,7 +146,6 @@ def test_warming_up_before_first_tick(make_rig: Callable[..., Rig]) -> None:
     assert state.totals == Totals()
     assert state.session == Totals()
     assert state.rate.rate == pytest.approx(4.50)
-    assert state.monthly_thb is None
 
 
 def test_publishes_running_state(make_rig: Callable[..., Rig]) -> None:
@@ -160,15 +159,6 @@ def test_publishes_running_state(make_rig: Callable[..., Rig]) -> None:
     assert state.session == rig.meter.session
     assert state.totals.energy_kwh == pytest.approx(120 / WS_PER_KWH)
     assert state.totals.cost_thb == pytest.approx(120 / WS_PER_KWH * 4.50)
-    assert state.monthly_thb is None
-
-
-def test_monthly_projection_after_a_minute(make_rig: Callable[..., Rig]) -> None:
-    rig = make_rig()
-    rig.feed(*[100.0] * 61)
-    state = rig.sampler.latest()
-    hourly_thb = 100 / 1000 * 4.50
-    assert state.monthly_thb == pytest.approx(hourly_thb * DESKTOP.hours_per_day * 30)
 
 
 def test_display_w_is_mean_of_last_three(make_rig: Callable[..., Rig]) -> None:

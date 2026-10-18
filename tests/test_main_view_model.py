@@ -28,7 +28,6 @@ RUNNING = MeterState(
     totals=Totals(cost_thb=1.2847, energy_kwh=0.2855, elapsed_s=8100.0),
     session=Totals(cost_thb=1.2847, energy_kwh=0.2855, elapsed_s=8100.0),
     rate=RateInfo(rate=4.5, period=Period.FLAT, next_change=None),
-    monthly_thb=85.65,
     status="running",
     display_w=247.0,
 )
@@ -92,7 +91,7 @@ def test_monthly_follows_hours_per_day() -> None:
 
 def test_monthly_measuring() -> None:
     short_session = Totals(cost_thb=0.002, energy_kwh=0.0004, elapsed_s=30.0)
-    state = replace(RUNNING, session=short_session, monthly_thb=None)
+    state = replace(RUNNING, session=short_session)
 
     assert build_view_model(state, SETTINGS).monthly == "Measuring…"
 

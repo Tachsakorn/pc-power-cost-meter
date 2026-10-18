@@ -11,7 +11,6 @@ from typing import Final, Literal
 
 from power_meter.meter import Meter, Totals
 from power_meter.power_model import PowerModel, PowerSnapshot
-from power_meter.projection import monthly_cost
 from power_meter.settings import Settings
 from power_meter.tariff import HolidayCalendar, RateInfo, tariff_from_settings
 
@@ -29,7 +28,6 @@ class MeterState:
     totals: Totals
     session: Totals
     rate: RateInfo
-    monthly_thb: float | None
     status: Status
     display_w: float | None
     """Mean of the last few readings, to steady the headline number. Billing uses raw readings."""
@@ -75,7 +73,6 @@ class Sampler(threading.Thread):
             totals=meter.totals,
             session=meter.session,
             rate=self._tariff.rate_at(now()),
-            monthly_thb=None,
             status="warming_up",
             display_w=None,
         )
@@ -126,7 +123,6 @@ class Sampler(threading.Thread):
             totals=self._meter.totals,
             session=self._meter.session,
             rate=info,
-            monthly_thb=monthly_cost(self._meter.session, self._settings.hours_per_day),
             status="running",
             display_w=fmean(self._recent_w),
         )
