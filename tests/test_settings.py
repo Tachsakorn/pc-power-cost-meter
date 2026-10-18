@@ -76,3 +76,23 @@ def test_validate_field_message_names_the_range() -> None:
 def test_validate_field_unknown_name_raises() -> None:
     with pytest.raises(KeyError):
         validate_field("nope", 1)
+
+
+@pytest.mark.parametrize("value", [2.5, 0.5, 23.99])
+def test_validate_field_rejects_fractional_hours(value: float) -> None:
+    assert validate_field("hours_per_day", value) == "Must be a whole number"
+
+
+@pytest.mark.parametrize("value", [1, 5.0, 24])
+def test_validate_field_accepts_whole_hours(value: float) -> None:
+    assert validate_field("hours_per_day", value) is None
+
+
+@pytest.mark.parametrize("value", [0, 25])
+def test_validate_field_still_range_checks_hours(value: float) -> None:
+    assert validate_field("hours_per_day", value) == "Must be between 1 and 24"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_validate_field_rejects_non_finite_hours(value: float) -> None:
+    assert validate_field("hours_per_day", value) == "Must be a whole number"

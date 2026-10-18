@@ -38,6 +38,8 @@ FIELD_RANGES: Mapping[str, tuple[float, float]] = {
     "hours_per_day": (1, 24),
 }
 
+INTEGER_FIELDS = frozenset({"hours_per_day"})
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -84,6 +86,8 @@ def standard_rate(s: Settings) -> float:
 
 def validate_field(name: str, value: float) -> str | None:
     low, high = FIELD_RANGES[name]
+    if name in INTEGER_FIELDS and not float(value).is_integer():
+        return "Must be a whole number"
     if low <= value <= high:
         return None
     return f"Must be between {low:g} and {high:g}"
