@@ -19,7 +19,7 @@ from power_meter.tariff import HolidayCalendar
 from power_meter.ui import app as app_module
 from power_meter.ui import stage as stage_module
 from power_meter.ui.app import HEIGHT, WIDTH, App, measured_components
-from power_meter.ui.main_view import RESET_MIN_GAP_S
+from power_meter.ui.main_view import GAUGE_ROW, PAD, RESET_MIN_GAP_S
 from power_meter.ui.scene.backdrop import Backdrop
 from power_meter.ui.scene.state import SceneState, caption
 from power_meter.ui.stage import Stage
@@ -349,6 +349,29 @@ def test_first_backdrop_follows_the_caption_and_leaves_its_row_clear(
         colours = backdrops[0].image.crop((0, top, stage.scene_column_px, bottom)).getcolors()
         assert colours is not None
         assert {colour for _, colour in colours} == {plain}
+    finally:
+        close(app)
+
+
+def test_layout_follows_a_scaling_change_after_startup(
+    tmp_path: Path, backdrops: list[Backdrop], set_scaling: Callable[[float], None]
+) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    stage = stage_of(app)
+    try:
+        set_scaling(1.5)
+        pump(app, 0.5)
+
+        assert (stage.winfo_width(), stage.winfo_height()) == (1140, 900)
+        assert stage.grid_columnconfigure(0)["minsize"] == 450
+        assert stage.pixel_size == 3
+        left, _, right, _ = stage.bbox("gauge")
+        assert right - left == 480
+        column_x, _, column_w, _ = stage.grid_bbox(1, GAUGE_ROW)
+        pad_left, pad_right = (round(pad * 1.5) for pad in PAD)
+        assert abs((left - column_x - pad_left) - (column_x + column_w - pad_right - right)) <= 1
+        assert backdrops[-1].image.size == (1140, 900)
+        assert_clear_of_widgets(stage, backdrops[-1], DARK.background)
     finally:
         close(app)
 

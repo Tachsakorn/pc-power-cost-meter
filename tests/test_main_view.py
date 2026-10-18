@@ -1,6 +1,6 @@
 import time
 import tkinter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from typing import Any
 
@@ -134,6 +134,24 @@ def test_theme_button_offers_the_other_theme(stage: Stage) -> None:
     view.apply_palette(LIGHT)
 
     assert view._theme_button.tooltip == "Switch to dark mode"
+
+
+def test_dashboard_follows_a_scaling_change(
+    stage: Stage, set_scaling: Callable[[float], None]
+) -> None:
+    view = make_view(stage)
+
+    set_scaling(1.5)
+    pump(stage, 0.3)
+
+    left, _, right, _ = stage.bbox("gauge")
+    assert right - left == round(main_view.GAUGE_W * 1.5)
+    assert stage.grid_rowconfigure(main_view.GAUGE_ROW)["minsize"] == round(
+        main_view.GAUGE_ROW_H * 1.5
+    )
+    assert {int(cells.track.cget("height")) for cells in view._detail_cells} == {
+        round(main_view.BAR_H * 1.5)
+    }
 
 
 def test_hours_stepper_stops_at_its_limits(stage: Stage) -> None:

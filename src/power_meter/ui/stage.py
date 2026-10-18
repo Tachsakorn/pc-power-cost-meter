@@ -45,20 +45,10 @@ class Stage(tkinter.Canvas):
         art: SceneArt,
         scene_box: tuple[int, int] = (300, 600),
     ) -> None:
-        self._k: float = ctk.ScalingTracker.get_widget_scaling(master)
-        self.scene_column_px = round(scene_box[0] * self._k)
-        super().__init__(
-            master,
-            width=self.scene_column_px,
-            height=round(scene_box[1] * self._k),
-            highlightthickness=0,
-            bd=0,
-            bg=palette.background,
-        )
-        self.pixel_size = pixel_scale((self.scene_column_px, round(SCENE_HEIGHT * self._k)), NATIVE)
-        width, height = NATIVE[0] * self.pixel_size, NATIVE[1] * self.pixel_size
-        left, top = (self.scene_column_px - width) // 2, SCENE_TOP_NATIVE * self.pixel_size
-        self._scene_box: Rect = (left, top, left + width, top + height)
+        super().__init__(master, highlightthickness=0, bd=0, bg=palette.background)
+        self._scene_area = scene_box
+        self._k: float = ctk.ScalingTracker.get_widget_scaling(self)
+        self._fit_scene()
 
         self._palette = palette
         self._daylight = daylight
@@ -88,6 +78,7 @@ class Stage(tkinter.Canvas):
         self.bind("<Configure>", self._on_configure)
         self.tag_bind("scene", "<Enter>", self._on_scene_enter)
         self.tag_bind("scene", "<Leave>", self._on_scene_leave)
+        ctk.ScalingTracker.add_widget(self._rescale, self)
 
     def set_theme(self, palette: Palette, daylight: bool) -> None:
         self._palette = palette
@@ -155,10 +146,31 @@ class Stage(tkinter.Canvas):
         if self._backdrop_job is not None:
             self.after_cancel(self._backdrop_job)
             self._backdrop_job = None
+        ctk.ScalingTracker.remove_widget(self._rescale, self)
         for sequence, funcid in self._toplevel_bindings:
             self._toplevel.unbind(sequence, funcid)
         self._toplevel_bindings.clear()
         super().destroy()
+
+    def _fit_scene(self) -> None:
+        self.scene_column_px = round(self._scene_area[0] * self._k)
+        self.configure(width=self.scene_column_px, height=round(self._scene_area[1] * self._k))
+        self.grid_columnconfigure(0, minsize=self.scene_column_px)
+        self.pixel_size = pixel_scale((self.scene_column_px, round(SCENE_HEIGHT * self._k)), NATIVE)
+        width, height = NATIVE[0] * self.pixel_size, NATIVE[1] * self.pixel_size
+        left, top = (self.scene_column_px - width) // 2, SCENE_TOP_NATIVE * self.pixel_size
+        self._scene_box: Rect = (left, top, left + width, top + height)
+
+    def _rescale(self, widget_scaling: float, _window_scaling: float) -> None:
+        if widget_scaling == self._k:
+            return
+        self._k = widget_scaling
+        self._fit_scene()
+        self.delete("scene", "tooltip")
+        self._scene_photo = None
+        self._hovering = False
+        self._draw_caption()
+        self.request_backdrop()
 
     def _refresh_backdrop(self) -> None:
         self.update_idletasks()

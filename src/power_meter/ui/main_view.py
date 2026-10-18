@@ -170,6 +170,7 @@ class MainView:
         self._reset_armed_at = 0.0
         self._detail_cells: list[DetailCells] = []
         self._parts: list[Any] = []
+        self._rules: list[tuple[tkinter.Frame, int]] = []
         self._visible = True
         self._fraction = 0.0
         self._gauge_key: tuple[int, Palette] | None = None
@@ -186,7 +187,6 @@ class MainView:
         self._font_caption = ctk.CTkFont(family, theme.SIZE_CAPTION)
         self._font_icon = ctk.CTkFont(self._icons.family, theme.SIZE_BODY + 2)
 
-        stage.grid_columnconfigure(0, minsize=stage.scene_column_px)
         stage.grid_columnconfigure(1, weight=1)
         stage.grid_rowconfigure(GAUGE_ROW, minsize=self._px(GAUGE_ROW_H))
         stage.grid_rowconfigure(DETAILS_ROW, weight=1)
@@ -292,6 +292,7 @@ class MainView:
 
         self._configure_binding = stage.bind("<Configure>", self._stage_resized, add="+")
         self._destroy_binding = stage.bind("<Destroy>", lambda _e: self._stop(), add="+")
+        ctk.ScalingTracker.add_widget(self._rescale, stage)
         self.apply_palette(palette)
 
     def render(self, vm: MainViewModel) -> None:
@@ -368,14 +369,19 @@ class MainView:
     def _rule(self, grid_row: int, space_above: int) -> None:
         line = tkinter.Frame(self._stage, height=1, bd=0, highlightthickness=0)
         self._painter.paint(line, bg="line")
-        # A plain Tk frame: customtkinter doesn't scale its padding.
-        self._on_stage(
-            line,
-            grid_row,
-            sticky="ew",
-            padx=tuple(self._px(pad) for pad in PAD),
-            pady=(self._px(space_above), 0),
-        )
+        self._on_stage(line, grid_row, sticky="ew", **self._rule_padding(space_above))
+        self._rules.append((line, space_above))
+
+    def _rule_padding(self, space_above: int) -> dict[str, Any]:
+        # Rules and bars are plain Tk frames, so their padding is scaled here rather than by
+        # customtkinter.
+        return {
+            "padx": tuple(self._px(pad) for pad in PAD),
+            "pady": (self._px(space_above), 0),
+        }
+
+    def _bar_padding(self, index: int) -> dict[str, Any]:
+        return {"padx": (self._px(L), self._px(L)), "pady": (self._px(0 if index == 0 else S), 0)}
 
     def _caption(self, master: Any, text: str) -> Any:
         return label(self._painter, master, spaced(text), self._font_caption, "text_muted")
@@ -441,8 +447,21 @@ class MainView:
             self._stage.request_backdrop()
 
     def _stage_resized(self, _event: "tkinter.Event[tkinter.Misc]") -> None:
+        self._redraw_gauge_later()
+
+    def _redraw_gauge_later(self) -> None:
         self._gauge_key = None
         self._stage.after_idle(lambda: self._show_gauge(self._fraction))
+
+    def _rescale(self, widget_scaling: float, _window_scaling: float) -> None:
+        self._k = widget_scaling
+        self._stage.grid_rowconfigure(GAUGE_ROW, minsize=self._px(GAUGE_ROW_H))
+        for line, space_above in self._rules:
+            line.grid_configure(**self._rule_padding(space_above))
+        for index, cells in enumerate(self._detail_cells):
+            cells.track.configure(height=self._px(BAR_H))
+            cells.track.grid_configure(**self._bar_padding(index))
+        self._redraw_gauge_later()
 
     def _render_details(self, rows: tuple[DetailRow, ...]) -> None:
         if [r.label for r in rows] != [cells.name.cget("text") for cells in self._detail_cells]:
@@ -469,21 +488,13 @@ class MainView:
             for widget in (cells.name, cells.track, cells.watts, cells.dot, cells.detail):
                 widget.destroy()
         self._detail_cells = []
-        bar_h = self._px(BAR_H)
         for i, name in enumerate(names):
-            gap = 0 if i == 0 else S
-            pady = (gap, 0)
+            pady = (0 if i == 0 else S, 0)
             name_label = label(self._painter, self._details, name, self._font_body, "text")
             name_label.grid(row=i, column=0, sticky="w", pady=pady)
-            track = tkinter.Frame(self._details, height=bar_h, bd=0, highlightthickness=0)
+            track = tkinter.Frame(self._details, height=self._px(BAR_H), bd=0, highlightthickness=0)
             self._painter.paint(track, bg="track")
-            track.grid(
-                row=i,
-                column=1,
-                sticky="ew",
-                padx=(self._px(L), self._px(L)),
-                pady=(self._px(gap), 0),
-            )
+            track.grid(row=i, column=1, sticky="ew", **self._bar_padding(i))
             fill = tkinter.Frame(track, bd=0, highlightthickness=0)
             self._painter.paint(fill, bg="text_muted")
             power = label(self._painter, self._details, "", self._font_body, "text")
@@ -516,6 +527,7 @@ class MainView:
         """Ends pending work. Also runs when the stage is destroyed, by which time the widgets
         are gone, so Reset's label is left alone."""
         self._visible = False
+        ctk.ScalingTracker.remove_widget(self._rescale, self._stage)
         if self._reset_job is not None:
             self._stage.after_cancel(self._reset_job)
             self._reset_job = None

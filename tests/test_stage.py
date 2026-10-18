@@ -1,7 +1,7 @@
 import sys
 import time
 import tkinter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import customtkinter as ctk
@@ -305,3 +305,24 @@ def test_tooltip_is_not_kept_clear(
     assert stage.find_withtag("tooltip")
     assert backdrops[-1].image.tobytes() == without.image.tobytes()
     assert backdrops[-1].twinklers == without.twinklers
+
+
+def test_scene_follows_a_scaling_change(
+    window: ctk.CTk,
+    art: SceneArt,
+    backdrops: list[Backdrop],
+    set_scaling: Callable[[float], None],
+) -> None:
+    stage = make_stage(window, art)
+    assert (stage.scene_column_px, stage.pixel_size) == (300, 2)
+
+    set_scaling(1.5)
+    pump(window, 0.3)
+
+    assert (stage.scene_column_px, stage.pixel_size) == (450, 3)
+    assert stage.grid_columnconfigure(0)["minsize"] == 450
+    left, top, right, bottom = stage.bbox("scene")
+    assert (right - left, bottom - top) == (NATIVE[0] * 3, NATIVE[1] * 3)
+    assert backdrops[-1].image.size == (stage.winfo_width(), stage.winfo_height())
+    caption_top = stage.bbox("caption")[1]
+    assert caption_top > bottom
