@@ -84,6 +84,7 @@ class App(ctk.CTk):
         self._save_failed = False
         self._settings_view: SettingsView | None = None
         self._tracker = StateTracker()
+        self._theme: Theme = settings.theme
 
         self.title(TITLE)
         set_window_icon(self)
@@ -109,14 +110,21 @@ class App(ctk.CTk):
             on_hours_change=self._hours_changed,
         )
         self._apply_animation()
-        self._stage.start()
-        self._poll_job = self.after_idle(self._poll)
+        self._poll_job = self.after_idle(self._start)
 
     def report_callback_exception(
         self, exc: type[BaseException], val: BaseException, tb: TracebackType | None
     ) -> None:
         # The packaged app has no console, so Tk's default stderr report would be lost.
         logger.error("Unhandled error in the window", exc_info=(exc, val, tb))
+
+    def _start(self) -> None:
+        # The first readings are shown before the stage starts, so its first backdrop is laid
+        # out around the dashboard and the scene caption as they will look.
+        try:
+            self._poll()
+        finally:
+            self._stage.start()
 
     def _poll(self) -> None:
         # Scheduled first, so one failed render doesn't freeze the display for good.
@@ -146,14 +154,16 @@ class App(ctk.CTk):
         self._stage.set_animate(self._settings.animate_scene and windows_animations_enabled())
 
     def _apply_theme(self, name: Theme) -> None:
+        if name == self._theme:
+            return
+        self._theme = name
         ctk.set_appearance_mode(name)
         palette = palette_for(name)
         self.configure(fg_color=palette.background)
-        self._stage.set_theme(palette, daylight=name == "light")
         self._main_view.apply_palette(palette)
         if self._settings_view is not None:
             self._settings_view.apply_palette(palette)
-        self._refresh_backdrop()
+        self._stage.set_theme(palette, daylight=name == "light")
 
     def _toggle_theme(self) -> None:
         name: Theme = "light" if self._settings.theme == "dark" else "dark"
@@ -180,7 +190,7 @@ class App(ctk.CTk):
         self._settings_view.grid(row=0, column=1, rowspan=ROW_COUNT, sticky="nsew")
         # Focus the view itself so the next Tab lands on its first control.
         self._settings_view.focus_set()
-        self._refresh_backdrop()
+        self._stage.request_backdrop()
 
     def _close_settings(self) -> None:
         if self._settings_view is None:
@@ -189,12 +199,7 @@ class App(ctk.CTk):
         self._settings_view = None
         self._main_view.show()
         self._stage.focus_set()
-        self._refresh_backdrop()
-
-    def _refresh_backdrop(self) -> None:
-        # The backdrop keeps clear of the widgets' boxes, so it needs the settled layout.
-        self.update_idletasks()
-        self._stage.refresh_backdrop()
+        self._stage.request_backdrop()
 
     def _settings_saved(self, settings: Settings) -> None:
         # Leaving the view first means a held Enter can't save the form again.

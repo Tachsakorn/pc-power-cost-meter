@@ -1,5 +1,6 @@
 import random
 import tkinter
+import tkinter.font
 from typing import Final
 
 import customtkinter as ctk
@@ -32,8 +33,8 @@ def pixel_scale(available: tuple[int, int], native: tuple[int, int]) -> int:
 class Stage(tkinter.Canvas):
     """Window-filling canvas: pixel backdrop, the animated dome scene and its caption.
 
-    Views are gridded straight onto the stage; call `refresh_backdrop` after the layout
-    changes so the decorations keep clear of them.
+    Views are gridded straight onto the stage, right of the scene column; call
+    `request_backdrop` after the layout changes so the decorations keep clear of them.
     """
 
     def __init__(
@@ -70,6 +71,7 @@ class Stage(tkinter.Canvas):
         self._started = False
         self._tick = 0
         self._job: str | None = None
+        self._backdrop_job: str | None = None
         self._rng = random.Random()
         self._dimmed: set[int] = set()
         self._size = (0, 0)
@@ -94,14 +96,15 @@ class Stage(tkinter.Canvas):
         self._draw_caption()
         if self._hovering:
             self._draw_tooltip()
-        self.refresh_backdrop()
+        self.request_backdrop()
 
-    def refresh_backdrop(self) -> None:
-        width, height = self.winfo_width(), self.winfo_height()
-        if width > 1 and height > 1:
-            self._render_backdrop(width, height)
-        if self._started:
-            self._draw_scene()
+    def request_backdrop(self) -> None:
+        """Redraws the backdrop and scene once the current event is handled; requests made
+        before then share that one redraw. Nothing is drawn until the stage has started."""
+        # A timer rather than after_idle: views call update_idletasks() while they lay
+        # themselves out, which would run an idle redraw before they had finished.
+        if self._started and self._backdrop_job is None:
+            self._backdrop_job = self.after(0, self._refresh_backdrop)
 
     def place_image(self, tag: str, image: Image.Image, x: int, y: int) -> None:
         photo = self._placed.get(tag)
@@ -144,15 +147,26 @@ class Stage(tkinter.Canvas):
 
     def start(self) -> None:
         self._started = True
-        self._draw_scene()
+        self.request_backdrop()
         self._schedule()
 
     def destroy(self) -> None:
         self._cancel()
+        if self._backdrop_job is not None:
+            self.after_cancel(self._backdrop_job)
+            self._backdrop_job = None
         for sequence, funcid in self._toplevel_bindings:
             self._toplevel.unbind(sequence, funcid)
         self._toplevel_bindings.clear()
         super().destroy()
+
+    def _refresh_backdrop(self) -> None:
+        self.update_idletasks()
+        self._backdrop_job = None
+        width, height = self.winfo_width(), self.winfo_height()
+        if width > 1 and height > 1:
+            self._render_backdrop(width, height)
+        self._draw_scene()
 
     def _schedule(self) -> None:
         if self._job is None and self._animate and self._started:
@@ -181,7 +195,7 @@ class Stage(tkinter.Canvas):
 
     def _on_configure(self, event: "tkinter.Event[tkinter.Misc]") -> None:
         if (event.width, event.height) != self._size:
-            self.refresh_backdrop()
+            self.request_backdrop()
 
     def _on_scene_enter(self, _event: "tkinter.Event[tkinter.Misc]") -> None:
         self._hovering = True
@@ -192,11 +206,10 @@ class Stage(tkinter.Canvas):
         self.delete("tooltip")
 
     def _keep_clear(self) -> list[Rect]:
-        rects = [self._scene_box]
-        caption = self.bbox("caption")
-        if caption:
-            rects.append((0, caption[1], self.scene_column_px, caption[3]))
-        for tag in ("tooltip", *self._placed):
+        caption_top = self._caption_top()
+        line = tkinter.font.Font(root=self, font=self._font()).metrics("linespace")
+        rects = [self._scene_box, (0, caption_top, self.scene_column_px, caption_top + line)]
+        for tag in self._placed:
             box = self.bbox(tag)
             if box:
                 rects.append(box)
@@ -271,11 +284,14 @@ class Stage(tkinter.Canvas):
         # Negative sizes are pixels, matching how customtkinter scales its own fonts.
         return (FONT_FAMILY, -round(SIZE_CAPTION * self._k))
 
+    def _caption_top(self) -> int:
+        return self._scene_box[3] + round(CAPTION_GAP * self._k)
+
     def _draw_caption(self) -> None:
         self.delete("caption")
         if not self._caption:
             return
-        y = self._scene_box[3] + round(CAPTION_GAP * self._k)
+        y = self._caption_top()
         glyph = "○" if self._state is SceneState.DORMANT else "●"
         mark = self.create_text(
             0,

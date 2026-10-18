@@ -169,7 +169,7 @@ def test_new_detail_rows_refresh_the_backdrop_while_shown(
 ) -> None:
     view = make_view(stage)
     refreshes: list[None] = []
-    monkeypatch.setattr(stage, "refresh_backdrop", lambda: refreshes.append(None))
+    monkeypatch.setattr(stage, "request_backdrop", lambda: refreshes.append(None))
     battery = replace(BASE, details=(DetailRow("Battery", "30 W", "measured", True, 1.0),))
 
     view.render(battery)

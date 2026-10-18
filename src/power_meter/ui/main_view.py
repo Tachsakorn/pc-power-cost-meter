@@ -438,7 +438,7 @@ class MainView:
         self._stage.place_image(GAUGE_TAG, image, *at)
         if at != self._gauge_at:
             self._gauge_at = at
-            self._stage.refresh_backdrop()
+            self._stage.request_backdrop()
 
     def _stage_resized(self, _event: "tkinter.Event[tkinter.Misc]") -> None:
         self._gauge_key = None
@@ -448,8 +448,7 @@ class MainView:
         if [r.label for r in rows] != [cells.name.cget("text") for cells in self._detail_cells]:
             self._rebuild_detail_rows([r.label for r in rows])
             if self._visible:
-                self._stage.update_idletasks()
-                self._stage.refresh_backdrop()
+                self._stage.request_backdrop()
         for cells, detail in zip(self._detail_cells, rows, strict=True):
             set_text(cells.watts, detail.watts)
             set_text(cells.detail, detail.detail)

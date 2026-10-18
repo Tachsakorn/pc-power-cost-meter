@@ -8,7 +8,9 @@ import customtkinter as ctk
 import pytest
 from PIL import Image, ImageTk
 
+from power_meter.ui import stage as stage_module
 from power_meter.ui.scene.art import NATIVE, SceneArt
+from power_meter.ui.scene.backdrop import Backdrop
 from power_meter.ui.scene.motion import windows_animations_enabled
 from power_meter.ui.scene.state import SceneState
 from power_meter.ui.stage import Stage, pixel_scale
@@ -46,6 +48,20 @@ def scene_pastes(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
 
     monkeypatch.setattr(ImageTk.PhotoImage, "paste", paste)
     return sizes
+
+
+@pytest.fixture
+def backdrops(monkeypatch: pytest.MonkeyPatch) -> list[Backdrop]:
+    rendered: list[Backdrop] = []
+    original = stage_module.render_backdrop
+
+    def render(*args: Any, **kwargs: Any) -> Backdrop:
+        backdrop = original(*args, **kwargs)
+        rendered.append(backdrop)
+        return backdrop
+
+    monkeypatch.setattr(stage_module, "render_backdrop", render)
+    return rendered
 
 
 def pump(window: ctk.CTk, seconds: float = 0.3) -> None:
@@ -185,7 +201,8 @@ def test_twinkling_stars_keep_clear_of_widgets(window: ctk.CTk, art: SceneArt) -
     panel.place(x=320, y=40)
     pump(window, 0.1)
 
-    stage.refresh_backdrop()
+    stage.request_backdrop()
+    pump(window, 0.1)
 
     stars = [stage.coords(item) for item in stage.find_withtag("twinkler")]
     assert stars
@@ -208,6 +225,7 @@ def test_daylight_theme_has_no_twinkling_stars(window: ctk.CTk, art: SceneArt) -
     stage = make_stage(window, art)
 
     stage.set_theme(LIGHT, True)
+    pump(window, 0.1)
 
     assert stage.cget("bg") == LIGHT.background
     assert stage.find_withtag("twinkler") == ()
@@ -217,3 +235,73 @@ def test_windows_animations_flag_is_true_off_windows(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(sys, "platform", "linux")
 
     assert windows_animations_enabled() is True
+
+
+def test_backdrop_waits_for_start(
+    window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop]
+) -> None:
+    stage = Stage(window, DARK, False, art)
+    stage.pack(fill="both", expand=True)
+    stage.request_backdrop()
+    pump(window, 0.2)
+    assert backdrops == []
+
+    stage.start()
+    pump(window, 0.2)
+
+    assert len(backdrops) == 1
+    assert backdrops[0].image.size == (760, 600)
+
+
+def test_requests_in_one_event_draw_one_backdrop(
+    window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop]
+) -> None:
+    stage = make_stage(window, art)
+    before = len(backdrops)
+
+    stage.request_backdrop()
+    stage.set_theme(LIGHT, True)
+    stage.update_idletasks()
+    stage.request_backdrop()
+    pump(window, 0.2)
+
+    assert len(backdrops) == before + 1
+
+
+def plain_rows(backdrop: Backdrop, box: tuple[int, int, int, int], background: str) -> bool:
+    plain = Image.new("RGB", (1, 1), background).getpixel((0, 0))
+    colours = backdrop.image.crop(box).getcolors()
+    return colours is not None and {colour for _, colour in colours} == {plain}
+
+
+@pytest.mark.parametrize(("palette", "daylight"), [(DARK, False), (LIGHT, True)])
+def test_caption_row_is_kept_clear_before_the_caption_is_drawn(
+    window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop], palette: Any, daylight: bool
+) -> None:
+    stage = Stage(window, palette, daylight, art)
+    stage.pack(fill="both", expand=True)
+    stage.start()
+    pump(window, 0.2)
+
+    stage.show_scene(SceneState.ACTIVE, CAPTION, TOOLTIP)
+
+    _, top, _, bottom = stage.bbox("caption")
+    assert plain_rows(backdrops[-1], (0, top, stage.scene_column_px, bottom), palette.background)
+
+
+def test_tooltip_is_not_kept_clear(
+    window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop]
+) -> None:
+    stage = make_stage(window, art)
+    stage.request_backdrop()
+    pump(window, 0.1)
+    without = backdrops[-1]
+
+    left, top, right, bottom = stage.bbox("scene")
+    stage.event_generate("<Enter>", x=(left + right) // 2, y=(top + bottom) // 2)
+    stage.request_backdrop()
+    pump(window, 0.1)
+
+    assert stage.find_withtag("tooltip")
+    assert backdrops[-1].image.tobytes() == without.image.tobytes()
+    assert backdrops[-1].twinklers == without.twinklers

@@ -297,6 +297,62 @@ def test_backdrop_refreshes_after_settings_and_theme(
         close(app)
 
 
+def test_each_action_draws_the_backdrop_once(
+    tmp_path: Path, backdrops: list[Backdrop], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    appearance: list[str] = []
+    set_mode = ctk.set_appearance_mode
+
+    def recording_set_mode(mode: str) -> None:
+        appearance.append(mode)
+        set_mode(mode)
+
+    app = open_app(tmp_path, FakeSampler())
+    monkeypatch.setattr(ctk, "set_appearance_mode", recording_set_mode)
+    try:
+        drawn = []
+        for action in ("Switch to light mode", "Settings", "Cancel", "Settings", "Save"):
+            before = len(backdrops)
+            click(app, action)
+            drawn.append(len(backdrops) - before)
+
+        assert drawn == [1, 1, 1, 1, 1]
+        assert appearance == ["light"]
+    finally:
+        close(app)
+
+
+@pytest.mark.parametrize(("name", "palette"), [("dark", DARK), ("light", LIGHT)])
+def test_first_backdrop_follows_the_caption_and_leaves_its_row_clear(
+    tmp_path: Path,
+    backdrops: list[Backdrop],
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    palette: Any,
+) -> None:
+    captions: list[str] = []
+    original = Stage._render_backdrop
+
+    def render(stage: Stage, width: int, height: int) -> None:
+        captions.append(caption_text(stage))
+        original(stage, width, height)
+
+    monkeypatch.setattr(Stage, "_render_backdrop", render)
+    settings = replace(default_settings(is_laptop=False), theme=name)
+    app = open_app(tmp_path, FakeSampler(), settings)
+    try:
+        stage = stage_of(app)
+        assert len(backdrops) == 1
+        assert caption(SceneState.ACTIVE) in captions[0]
+        plain = Image.new("RGB", (1, 1), palette.background).getpixel((0, 0))
+        _, top, _, bottom = stage.bbox("caption")
+        colours = backdrops[0].image.crop((0, top, stage.scene_column_px, bottom)).getcolors()
+        assert colours is not None
+        assert {colour for _, colour in colours} == {plain}
+    finally:
+        close(app)
+
+
 def test_scene_caption_follows_sampler_status(tmp_path: Path) -> None:
     sampler = FakeSampler()
     running = sampler.state
