@@ -29,7 +29,15 @@ numbers come from real sensors and which are estimates.
   including Thai public holidays that are billed at the off-peak rate.
 - **Monthly estimate.** "If you use your PC like this 5 hours a day: ≈ ฿167 per month", based on
   the current session.
-- **Dark and light themes**, switchable at any time.
+- **A scene that follows the load.** A pixel-art glass dome with a tree and a glowing core sits
+  next to the numbers. It has four states: idle, active, high load and "waiting for live data". The
+  core brightens and more particles flow as the load rises, and the scene goes grey when there are
+  no readings, so it never shows a state the app has not measured.
+- **Earth and amber themes, dark and light.** Dark has a starry backdrop and light a daytime one;
+  switch at any time. The tick gauge shows the current load against this PC's maximum.
+- **Calm by choice.** The scene animates at 8 frames per second and stops while the window is
+  minimised. Turn it off under **Settings → Animate the scene**; it also stays still when Windows'
+  *Animation effects* setting is off.
 - **Offline and private.** No network access, no telemetry, no account. Settings and totals stay in
   a few small files on your PC.
 - **No administrator rights.** Runs as a standard user and never shows a UAC prompt.
@@ -72,15 +80,25 @@ delete the file and download it again from the Releases page.
 
 ## Using it
 
-- **You've spent** is the running total, kept across restarts. **Reset** sets it back to zero; click
-  it a second time within 3 seconds to confirm.
-- **Right now** shows wall power (averaged over the last three seconds so the number is readable)
-  and the cost per hour at the current price, with a usage level from *Idle* to *Gaming-level use*.
-- **Show details** lists CPU, GPU, other components and power-supply loss, each marked *measured*
-  or *estimated*.
-- **Settings** sets your meter type and price, the theme, and under **Advanced settings** the
-  hardware values used in the formulas below. Advanced settings also shows the folder the app saves
-  to. The button next to Settings switches between dark and light.
+The window is a fixed 760 × 600: the scene on the left, the dashboard on the right. Settings
+replaces the dashboard and leaves the scene in view.
+
+- **The gauge** shows wall power (averaged over the last three seconds so the number is readable)
+  with a usage level from *Idle* to *Gaming-level use*. Its ticks fill from 0 W to the most this PC
+  is expected to draw, which is printed at the right end of the scale.
+- **The scene** switches between *Idle*, *Active* and *High load* using the same load figure, and
+  shows *Waiting for live data* while there are no readings. The caption under the dome names the
+  state; hover over the dome for the exact reading.
+- **Spent** is the running total, kept across restarts, with the time it covers. **Reset** sets it
+  back to zero; click it a second time within 3 seconds to confirm.
+- **Per hour**, **per month** and **hours a day** give the cost at the current price and the
+  monthly estimate; the stepper sets how many hours a day you use the PC.
+- **Breakdown** lists CPU, GPU, other components and power-supply loss, each marked *measured*
+  (filled dot) or *estimated* (hollow dot).
+- **Settings** sets your meter type and price, the theme, whether the scene animates, and under
+  **Advanced settings** the hardware values used in the formulas below. Advanced settings also shows
+  the folder the app saves to. The sun or moon button next to Settings switches between light and
+  dark.
 
 ### Setting your electricity price
 
@@ -318,7 +336,7 @@ no crash reports. It reads hardware sensors and writes only the files below.
 
 | File | Contents | When it is written |
 |---|---|---|
-| `config.json` | Your settings: meter type, prices, hardware values, theme, hours per day, extra holidays | When you save settings, switch theme or change hours per day |
+| `config.json` | Your settings: meter type, prices, hardware values, theme, hours per day, whether the scene animates, extra holidays | When you save settings, switch theme or change hours per day |
 | `state.json` | Total cost, energy and measured time; on a laptop, the *Other components* value learned on battery | Every 30 seconds, after a reset, when the app closes, and when Windows shuts down or logs off |
 | `power-meter.log`, `power-meter.log.1`, `power-meter.log.2` | App version, sensors that are unavailable, sources that failed or recovered, and errors | When those events happen; each file is capped at 256 KB |
 | `config.json.bak`, `state.json.bak` | A previous file that could not be read, kept for inspection | Only if a file was damaged |
@@ -397,7 +415,10 @@ affiliated with MEA, PEA, AMD, NVIDIA or Microsoft.
 
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) by Tom Schimansky (MIT), for the
   user interface.
+- [Pillow](https://python-pillow.github.io/) (MIT-CMU), which scales the scene and draws the gauge
+  and backdrop.
 - [nvidia-ml-py](https://pypi.org/project/nvidia-ml-py/), NVIDIA's Python bindings for NVML (BSD).
 - The AMD Display Library (ADL), used through the AMD graphics driver.
 - Microsoft's Performance Data Helper (PDH) and DXCore APIs.
 - [PyInstaller](https://pyinstaller.org/), which packages the app as a single exe.
+- The pixel art, the scene's motion and the backdrop were made for this project.

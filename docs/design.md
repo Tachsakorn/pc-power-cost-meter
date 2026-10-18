@@ -77,14 +77,24 @@ src/power_meter/
   data/
     holidays_th.json   bundled off-peak holidays
     icon.ico           window and exe icon
+    scene/             dome scene layers (back, canopy, glass PNGs) and particle paths
   ui/
     app.py             main window: polling, view switching, theme, saving settings
-    main_view.py       main view and its view-model
+    stage.py           window-filling canvas: backdrop, animated scene, caption, hover text
+    main_view.py       dashboard and its view-model
+    gauge.py           tick gauge image
     settings_view.py   settings view
     form.py            settings form parsing and validation (no Tk)
     format.py          money, duration, watt and price-line text
     theme.py           design tokens and the contrast-ratio calculation
     widgets.py         shared widgets: buttons, segmented control, dropdown, field, scroll area
+    scene/
+      state.py         scene state from the live load: thresholds, hysteresis, dwell
+      art.py           composes the layers and draws particles, rings and haze per frame
+      palette.py       colour roles and their per-state and daylight overrides
+      backdrop.py      starry and daytime pixel backdrops
+      motion.py        reads Windows' "Animation effects" setting
+      dither.py        ordered-dither threshold
 packaging/             PyInstaller spec (builds the Windows version resource), launcher script
 tests/
 tools/sensor_check.py  prints what every power source reads on this PC
@@ -104,11 +114,15 @@ sampler thread (every 1.0 s, monotonic clock)
 Tk main loop (after() every 250 ms)
   tariff.rate_at(now) for the window's current settings ──► RateInfo
   sampler.latest() + settings + RateInfo ──► build_view_model() ──► MainView.render(view_model)
+  sampler.latest() ──► StateTracker.update() ──► Stage.show_scene(state, caption, hover text)
+
+Stage (after() every 125 ms, while the window is visible and animation is on)
+  draws the next scene frame
 ```
 
 - Hardware calls never run on the Tk thread, so a slow or hung driver call cannot freeze the window.
 - Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()`, `request_reset()` and `save_now()`, which queue commands for the sampler's next tick. Commands still queued when the sampler stops run before the final save.
-- `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text.
+- `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text. The scene's state logic (`StateTracker`, `describe`, `caption`) is likewise free of Tk and takes an injectable clock.
 - The window prices the display from its own copy of the settings rather than the sampler's, so right after a settings change the price line and cost per hour never mix the new meter type with the old rate. Billing switches on the sampler's next tick.
 
 ## 4. Power model
@@ -251,85 +265,153 @@ monthly           ≈ avg_cost_per_hour × hours_per_day × 30
 
 ## 6. UI
 
-Goals: understandable by non-technical users, with technical detail available but hidden by default.
+Goals: understandable by non-technical users, with the technical detail always one glance away, and an identity of its own rather than a stock dashboard look. The window pairs the numbers with a small pixel-art scene that reacts to the live load.
 
-### Main view
+### Window and layout
+
+The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). A single `Stage` canvas fills it. The left column, 300 px wide, holds the scene; the right column, 460 px wide, holds the dashboard or, when open, Settings, so the scene stays visible in both.
 
 ```
-Power & Cost Meter                  Light mode   Settings
-
-You've spent
-฿ 1.2847                                  ← primary: largest, accent green
-in 2h 15m
-
-Right now
-247 W · about ฿1.11 per hour              ← secondary: accent blue
-[usage bar]  Gaming-level use
-
-If you use your PC like this [− 5 +] hours a day
-≈ ฿166 per month
-
-▸ Show details                            ← collapsed by default
-    CPU      50 W  measured
-    GPU     140 W  measured
-    Other    25 W  estimated
-    PSU loss 32 W  87% efficiency
-
-Price: Normal meter · ฿4.50 per unit (default)  Change
-                                                  Reset
+ [dome scene]       ● Measuring                      ☀  ⚙
+                           ╭ tick gauge ╮
+                              247 W
+                            Gaming-level use
+                     0                    420 W
+ ● High load ·       SPENT
+   following         ฿ 1.2847                  in 2h 15m
+   live data         ───────────────────────────────────
+                     PER HOUR   │ PER MONTH   │ HOURS A DAY
+                     ฿1.11      │ ≈ ฿166      │ [−] 5 [+]
+                     ───────────────────────────────────
+                     BREAKDOWN
+                     CPU       ▬▬▬▬▬▬     50 W  ● measured
+                     GPU       ▬▬▬▬▬▬▬▬  140 W  ● measured
+                     Other     ▬▬         25 W  ○ estimated
+                     PSU loss  ▬▬         32 W  87% efficiency
+                     ───────────────────────────────────
+                     Normal meter · ฿4.50 per unit   Change   Reset
 ```
 
-- With TOU selected, the price line reads: `TOU · Peak ฿6.38 now · Off-peak from 22:00`.
-- The total cost shows 4 decimal places. Watts are smoothed over the last 3 samples for display only; billing uses raw samples.
-- **Reset** asks for confirmation by changing to "Click again to reset" for 3 s. No modal dialog.
-- Window: fixed at 460 × 560 px. The main view fits without scrolling with details expanded; the settings view scrolls inside the window.
-- The price line and Reset are anchored to the bottom of the window. With details collapsed, the spare height sits between the content and that footer.
-- The theme button in the header switches between dark and light at once and saves the choice. The hours stepper (1–24) saves on every change.
+- **Status line.** "● Measuring", or the active notice (see States). The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise.
+- **Gauge.** Watts in a large light weight with a small "W", the usage label below, and "0" and the PC's peak watts (`P_peak`) at the ends of the scale. With TOU selected, the price line in the footer reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`.
+- **Spent.** The "฿" sign small, the total large in the light weight with four decimals, and "in <duration>" right-aligned on the same baseline. Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
+- **Stats row.** Per hour, per month and hours a day (a 1–24 stepper that saves on every change), separated by 1 px rules. The month figure reads "Measuring…" for the first minute of session data (§5).
+- **Breakdown.** One row per part: name, a thin bar showing its share of the largest part, watts, and a dot with the detail text. A filled dot marks a measured part and a hollow one an estimate. Details are always shown; the taller window fits them, so there is no toggle.
+- **Footer.** The price line and **Change** on the left, **Reset** on the right. Reset asks for confirmation by changing to "Click again to reset" for 3 s, and ignores a second click within 0.4 s of the first. No modal dialog.
+- Copy is short and label-style. Pixel art is never used for text or values.
+- The theme button switches between dark and light at once and saves the choice.
 
-### Settings view (replaces the main view; Cancel or Esc returns)
+### Gauge
+
+61 ticks on a 200° arc, from 190° to −10°. Every tenth tick is longer. Ticks up to the current one are drawn in the accent colour, the rest in the track colour, and the current tick is the longest and thickest. The lit fraction is `wall_w / peak_w`, clamped to 0–1, so the gauge and the usage label share the same peak. The arc is rendered with Pillow at four times the size and scaled down, and redrawn only when the lit tick or the palette changes.
+
+### Scene
+
+The scene is a glass dome over a small tree with an energy crystal at its base. It is drawn at a native 128 × 160 px from three indexed PNG layers in `power_meter/data/scene/`:
+
+- `back.png`: the air, the base, soil, stones, trunk, ground plants and the core.
+- `canopy.png`: three sway frames of the leaves side by side (384 × 160).
+- `glass.png`: the dome's glass and highlights.
+
+Index 0 is transparent and the layers share one 32-colour palette, plus a haze colour added at run time, so a state or the time of day is a palette change rather than a different picture. `paths.json` holds the routes, in native pixels, that the particles follow: roots, trunk and branches.
+
+**States.** The state comes from `ratio = wall_w / peak_w` of the latest snapshot (`peak_w` is the `P_peak` from §4). It uses its own thresholds, not the usage-label ones.
+
+| State | Shown when | Caption under the dome | Hover text |
+|---|---|---|---|
+| Waiting | No live data: warming up, restarting, or no snapshot | ○ Waiting for live data | Waiting for live readings |
+| Idle | `ratio` below 0.20 | ● Idle · following live data | Resting — 62 W, 15% of this PC's maximum |
+| Active | 0.20 ≤ `ratio` < 0.55 | ● Active · following live data | Working — … |
+| High load | `ratio` ≥ 0.55 | ● High load · following live data | High load — 214 W, 78% of this PC's maximum |
+
+- **Hysteresis.** A scene is left only after the ratio crosses its threshold by 0.04: High load is kept down to 0.51 and Active down to 0.16.
+- **Dwell.** A change between live states shows only after the new state has held for 5 s. If the target changes again, or goes back to the current state, the timer starts over. Entering or leaving Waiting is immediate, and the first live reading picks its state directly. The scene never shows a made-up value: with no data it is grey, not idle.
+
+**Per-state look.** The state changes the palette and the code-driven effects:
+
+| State | Core | Leaves | Particles | Glow rings | Air haze |
+|---|---|---|---|---|---|
+| Waiting | grey | darkest greens | 0 | 0 | none |
+| Idle | teal, dim glow | slightly darker greens | 4 | 1 | 4% |
+| Active | teal, full glow | the drawn greens | 10 | 2 | 8% |
+| High load | each core colour one step brighter | lighter greens | 18 | 3 | 14% |
+
+The effects are drawn on the indexed image before it is coloured. Particles advance one path pixel per step, glow rings are dithered ellipses around the core whose pattern shifts every other step, and haze is ordered-dither (4 × 4 Bayer) pixels on the air. By day the air, glass and highlight colours switch to lighter ones.
+
+**Scale.** Integer only: `pixel_size = max(1, min(300 × k // 128, 320 × k // 160))`, with `k` the display scaling, drawn with nearest-neighbour scaling. The dome is centred in the left column, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`.
+
+**Rendering.** Each frame is composited from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place, so there is no per-frame allocation. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
+
+### Animation
+
+- **Rate.** 8 frames per second (one step every 125 ms).
+- **Sway.** The canopy cycles through its frames 0, 1, 0, 2, holding each for 3 steps, so one cycle takes 1.5 s.
+- **Twinkle.** In the dark theme, every 8 steps (1 s) two of the cross-shaped stars swap between bright and dim.
+- **Pausing.** Stepping stops when the window is minimised and resumes when it is restored.
+- **Still frame.** With the animation off the scene shows the frame for its state at step 0, still reacting to the state, and the stars stay bright. It is off when **Animate the scene** is unticked or Windows' *Animation effects* setting (`SPI_GETCLIENTAREAANIMATION`) is off; that flag is read at start-up and whenever settings change, and counts as on where it can't be read.
+
+### Backdrop
+
+A pixel backdrop spans the whole window at the scene's `pixel_size`, so the decoration and the dome share one pixel grid. It is drawn from a fixed seed, so it looks the same on every launch, and counts scale with the window area relative to a 380 × 281 reference.
+
+- **Dark.** A faint diagonal dithered band, about 320 faint stars in three greys and 48 dim cream or teal ones, and 14 cross-shaped stars (a bright centre with four dim arms) that take turns twinkling.
+- **Light.** A sun at the top left with a dithered halo and eight short rays, faint diagonal light bands, up to 7 clouds, 14 seeds and 3 birds.
+- **Clear zones.** The widgets sit on the canvas with the background colour, so any decoration under them would show as a gap. Every decoration keeps 3 screen px (8 px for twinkling stars) away from the scene, the caption, the gauge, the hover text and every visible widget. The backdrop is drawn again whenever the layout changes: a theme change, Settings opening or closing, the gauge moving, the breakdown gaining or losing a row.
+
+### Settings view
+
+Settings replaces the dashboard in the right column (Cancel or Esc returns); the scene and backdrop stay.
 
 - **Your electricity meter:** Normal / TOU (segmented button)
 - **Price per unit:** a band dropdown for Normal, or Peak/Off-peak fields for TOU. Hint: *Find "units used" on your electricity bill.*
-- **Advanced settings** (collapsed): other components W, monitor & extras W, PSU efficiency %, CPU TDP, GPU TDP. TDP fields are disabled and labelled "measured — not used" when a measured source is active. Also shows the data folder in use.
 - **Theme:** Dark / Light (previews at once; Cancel restores the previous theme)
-- **Cancel** / **Save**. Save is disabled while any field is invalid. Invalid fields get a red border and a one-line reason below.
+- **Animate the scene:** a checkbox, on by default, stored as `animate_scene` in `config.json`. It applies when the form is saved.
+- **Advanced settings** (collapsed): other components W, monitor & extras W, PSU efficiency %, CPU TDP, GPU TDP. TDP fields are disabled and labelled "measured — not used" when a measured source is active. Also shows the data folder in use and, at the bottom of the form, the app version.
+- **Cancel** / **Save**. Save is disabled while any field is invalid. Invalid fields get an error-coloured border and a one-line reason below.
+
+The form scrolls inside the window.
 
 ### States
 
 | State | Behaviour |
 |---|---|
 | First launch | Defaults; meter starts immediately |
-| Warming up (first sample) | Values show "—"; no fake numbers |
-| No measured sources | Details list "estimated" for each part; one-line note: "Estimates only on this PC" |
+| Warming up (first sample) | Values show "—"; the scene is in its waiting state; no fake numbers |
+| No measured sources | Breakdown lists "estimated" for each part; status line reads "Estimates only on this PC" |
 | Source demoted mid-session | Label switches to "estimated"; no popup |
 | Storage not writable anywhere, or a save failed | Non-blocking note: "Settings can't be saved on this PC"; app keeps running |
-| Sampler tick failed | Note: "Measurement paused — restarting" until fresh data arrives |
+| Sampler tick failed | Note: "Measurement paused — restarting" until fresh data arrives; the scene waits |
 
-The notes share one line next to "Right now". When several apply, the highest wins: restarting, then can't save, then estimates only.
+The notes share the status line. When several apply, the highest wins: restarting, then can't save, then estimates only.
 
 ### Design tokens
 
-| Token | Dark | Light |
-|---|---|---|
-| background | `#1A1B26` | `#F5F6FA` |
-| surface | `#22243A` | `#FFFFFF` |
-| text primary | `#E6E7EE` | `#1A1B26` |
-| text secondary | `#9A9CB0` | `#5A5D72` |
-| accent cost | `#2ECC71` (8.1:1) | `#1E8449` (4.4:1) |
-| accent power | `#3498DB` (5.4:1) | `#1F6FA8` (5.0:1) |
-| error | `#FF6B6B` | `#C0392B` |
+The palette is Earth & amber. Every colour in the window comes from `ui/theme.py`.
 
-The light-mode accents are darker than the original palette's `#27AE60`/`#2980B9`, which measure 2.7:1 and 4.0:1 against the background. Ratios are against the background; `tests/test_theme.py` checks every text colour against both background and surface. The focus ring uses the power accent.
+| Token | Dark | Light | Used for |
+|---|---|---|---|
+| background | `#1A1613` | `#F4EEE4` | Window, canvas |
+| surface | `#231E1A` | `#FBF7F0` | Raised controls, hover text box |
+| line | `#332B25` | `#E2D8C8` | Rules, outlines |
+| text | `#F0E8DC` | `#2A2119` | Values, primary text |
+| text_muted | `#A3968A` | `#74675A` | Captions, labels, units |
+| text_faint | `#6E635A` | `#A99C8E` | Disabled text only |
+| accent | `#E8B866` | `#9A5F0E` | Lit gauge ticks, measured dots, links |
+| track | `#3A312A` | `#E6DDCF` | Unlit gauge ticks, bar tracks |
+| error | `#FF8A70` | `#B3261E` | Invalid fields, Reset confirmation |
+| focus | `#E8B866` | `#9A5F0E` | Focus ring |
 
-- **Type:** one family (Segoe UI, the Windows system font). Scale: 40 (cost), 22 (watts), 13 (body), 11 (captions). The cost uses tabular figures where available, so digits don't jitter.
-- **Spacing:** 4-px grid (8 / 12 / 16 / 24). One corner radius (8 px). No gradients, glow, or emoji.
-- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal; the "measured/estimated" labels are text.
+Contrast against the background and the surface: text, muted text and error are at least 4.5:1 in both themes, and the accent is at least 4.5:1 on the background (9.8:1 dark, 4.5:1 light). The focus ring is at least 3:1 on the background. `text_faint` is below 4.5:1 and is used only for disabled controls. `tests/test_theme.py` checks these ratios.
+
+- **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 54 (watts), 40 (cost), 22 (baht sign), 18 (watt unit), 17 (stat values), 13 (body), 11 (captions).
+- **Spacing:** 4-px grid (4 / 8 / 12 / 16 / 24), with 20 px left and 24 px right margins on the dashboard. Controls share one 8 px corner radius. No gradients, glow or emoji; the only imagery is the pixel scene.
+- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, and the scene state is also written in the caption. Icon buttons have hover tooltips naming their action.
 
 ## 7. Persistence
 
 Two files in the same folder:
 
-- `config.json`: user settings. Written when settings are saved, when the theme button is used, and when the hours stepper changes.
+- `config.json`: user settings, including the theme and `animate_scene`. Written when settings are saved, when the theme button is used, and when the hours stepper changes.
 - `state.json`: accumulated cost, energy, and elapsed time, plus an optional `learned_other_w` (the learned `P_other`, §4). The key is left out until a value has been learned; a missing, non-numeric, or out-of-range (outside 0–150 W) value loads as "not learned" without affecting the totals. Resetting the total keeps it. Written every 30 s, right after a reset, on close, and when Windows signals a shutdown or log-off (Tk's `WM_SAVE_YOURSELF`), since the process may then end without a close event. Every write happens on the sampler thread.
 
 **Location:** the folder containing the `.exe` (`sys.executable` when frozen, not the PyInstaller temp folder). If that folder is not writable, use `%APPDATA%\PCPowerCostMeter\`. The resolved location is shown under Advanced settings.
@@ -356,6 +438,7 @@ Two files in the same folder:
 |---|---|---|
 | `customtkinter` 6.x | Themed Tk widgets with built-in dark/light modes; small footprint, and bundles cleanly with PyInstaller | Pinned to major version 6 (`>=6.0,<7`) |
 | `nvidia-ml-py` | Official NVIDIA bindings for NVML | Pure Python; imported lazily so it is optional at runtime |
+| `pillow` 11+ | Indexed-palette sprites, nearest-neighbour scaling and compositing for the scene, and the gauge and backdrop images | MIT-CMU licence |
 | dev: `pytest`, `ruff`, `mypy`, `pyinstaller` 6.22+ | Test, lint, type-check, build | PyInstaller 6.22 supports Python 3.15 |
 
 **Not used:**
@@ -366,7 +449,7 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 
 ## 10. Build, test, release
 
-- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast); and one smoke test that drives the real window over a fake sampler, skipped when Tk has no display; and the version (package attribute equals installed metadata). Sensors are tested against fake DLL objects, so the suite runs on Linux.
+- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast, scene state, scene frames, backdrop); and one smoke test that drives the real window over a fake sampler, skipped when Tk has no display; and the version (package attribute equals installed metadata). Sensors are tested against fake DLL objects, so the suite runs on Linux.
 - **Hardware smoke test:** `tools/sensor_check.py` plus a manual checklist run on the desktop and the laptop before each release.
 - **CI (GitHub Actions, `windows-latest`, Python 3.13 and 3.15):** `ruff check .`, `mypy` (strict, configured in `pyproject.toml`), `pytest` on every push and PR.
 - **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. The job fails if the tag isn't `v` plus `power_meter.__version__`, which is the only place the version is written. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.
