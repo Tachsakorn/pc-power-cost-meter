@@ -322,7 +322,8 @@ ruff check .
 mypy
 ```
 
-The tests use fake sensors, so they also run on Linux.
+The tests use fake sensors, so they also run on Linux. The one test that opens a window is
+skipped when there is no display.
 
 Build the single-file exe:
 
