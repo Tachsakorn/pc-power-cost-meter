@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, TypeGuard
 
+from power_meter.meter import MAX_GAP_S
 from power_meter.sensors.base import (
     BatterySource,
     Component,
@@ -13,11 +14,14 @@ from power_meter.sensors.base import (
 )
 from power_meter.sensors.estimators import CpuEstimate, GpuEstimate
 from power_meter.sensors.warn_once import WarnOnce
-from power_meter.settings import Settings
+from power_meter.settings import FIELD_RANGES, Settings
 
 FAILS_BEFORE_DEMOTE: Final = 3
 RETRY_DEMOTED_S: Final = 60.0
 MAX_VALID_W: Final = 1000.0
+LEARN_TIME_CONSTANT_S: Final = 120.0
+LEARN_READY_S: Final = 60.0
+MAX_OTHER_W: Final = FIELD_RANGES["other_w"][1]
 
 logger = logging.getLogger(__name__)
 
@@ -200,10 +204,47 @@ class _SourceChain:
         )
 
 
+class _LearnedOther:
+    """Moving average of the battery draw that the CPU and GPU readings don't account for.
+
+    The average starts from zero and is divided by the weight it has built up so far, so the
+    first minute is a time-weighted mean of all its samples instead of leaning on the first one.
+    """
+
+    def __init__(self, saved_w: float | None) -> None:
+        self._average = saved_w if saved_w is not None else 0.0
+        self._weight = 1.0 if saved_w is not None else 0.0
+        self._learned_s = LEARN_READY_S if saved_w is not None else 0.0
+        self._last_s: float | None = None
+
+    @property
+    def watts(self) -> float | None:
+        if self._learned_s < LEARN_READY_S:
+            return None
+        return self._average / self._weight
+
+    def add(self, residual_w: float, now: float) -> None:
+        last, self._last_s = self._last_s, now
+        if last is None:
+            return
+        dt = now - last
+        if dt <= 0 or dt > MAX_GAP_S:
+            return
+        alpha = dt / (LEARN_TIME_CONSTANT_S + dt)
+        self._average += alpha * (residual_w - self._average)
+        self._weight += alpha * (1 - self._weight)
+        self._learned_s += dt
+
+    def pause(self) -> None:
+        self._last_s = None
+
+
 class PowerModel:
     """Combines per-component readings into wall power.
 
     Each chain is ordered best first and must end with an estimator, which is always available.
+    On battery it learns how much the rest of the laptop draws, and uses that for "Other" when
+    plugged in, as long as "Other" is still at `profile_other_w`, the profile default.
     """
 
     def __init__(
@@ -214,6 +255,8 @@ class PowerModel:
         refresh: Callable[[], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         load: LoadProvider | None = None,
+        learned_other_w: float | None = None,
+        profile_other_w: float | None = None,
     ) -> None:
         self._load = load
         self._chains = {
@@ -224,6 +267,12 @@ class PowerModel:
         self._refresh = refresh
         self._clock = clock
         self._max_wall_w = 0.0
+        self._learned = _LearnedOther(learned_other_w)
+        self._profile_other_w = profile_other_w
+
+    @property
+    def learned_other_w(self) -> float | None:
+        return self._learned.watts
 
     def sample(self) -> PowerSnapshot:
         if self._refresh is not None:
@@ -239,7 +288,11 @@ class PowerModel:
         s = self._settings
 
         battery_w = self._battery_discharge_w()
+        other = self._other_part()
         if battery_w is not None:
+            # Screen, storage, Wi-Fi and any CPU under-reporting all end up in the residual.
+            residual_w = battery_w - cpu.watts - (gpu.watts if has_discrete_gpu else 0.0)
+            self._learned.add(min(max(residual_w, 0.0), MAX_OTHER_W), now)
             wall_w = battery_w / s.charge_efficiency + s.extra_w
             parts = [
                 Part("Battery", battery_w, True, "measured"),
@@ -251,14 +304,15 @@ class PowerModel:
                 ),
             ]
         else:
-            dc_w = cpu.watts + gpu.watts + s.other_w
+            self._learned.pause()
+            dc_w = cpu.watts + gpu.watts + other.watts
             wall_w = dc_w / s.psu_efficiency + s.extra_w
             parts = [
                 _component_part("CPU", cpu),
                 _component_part("GPU", gpu)
                 if has_discrete_gpu
                 else Part("GPU", 0.0, False, "included in CPU"),
-                Part("Other", s.other_w, False, "estimated"),
+                other,
                 Part(
                     "PSU loss",
                     dc_w * (1 / s.psu_efficiency - 1),
@@ -271,7 +325,7 @@ class PowerModel:
 
         self._max_wall_w = max(self._max_wall_w, wall_w)
         gpu_tdp_w = s.gpu_tdp_w if has_discrete_gpu else 0.0
-        budget_w = (s.cpu_tdp_w + gpu_tdp_w + s.other_w) / s.psu_efficiency + s.extra_w
+        budget_w = (s.cpu_tdp_w + gpu_tdp_w + other.watts) / s.psu_efficiency + s.extra_w
         peak_w = max(self._max_wall_w, budget_w)
         return PowerSnapshot(
             wall_w=wall_w,
@@ -296,6 +350,12 @@ class PowerModel:
             chain.close()
         if self._battery is not None:
             self._battery.close()
+
+    def _other_part(self) -> Part:
+        learned_w = self._learned.watts
+        if learned_w is not None and self._settings.other_w == self._profile_other_w:
+            return Part("Other", learned_w, False, "learned on battery")
+        return Part("Other", self._settings.other_w, False, "estimated")
 
     def _read(self, component: Component, now: float) -> Reading:
         chain = self._chains.get(component)

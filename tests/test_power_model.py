@@ -1,5 +1,6 @@
 import logging
 from dataclasses import replace
+from typing import Any
 
 import pytest
 from fakes import FakeBattery, FakeLoad, FakeSource
@@ -43,6 +44,8 @@ def make_model(
     battery: FakeBattery | None = None,
     clock: FakeClock | None = None,
     load: FakeLoad | None = None,
+    learned_other_w: float | None = None,
+    profile_other_w: float | None = None,
 ) -> PowerModel:
     return PowerModel(
         {"cpu": cpu or [estimate("cpu", 30)], "gpu": gpu or [estimate("gpu", 0)]},
@@ -50,6 +53,8 @@ def make_model(
         settings,
         clock=clock or FakeClock(),
         load=load,
+        learned_other_w=learned_other_w,
+        profile_other_w=profile_other_w,
     )
 
 
@@ -366,3 +371,175 @@ def test_close_closes_open_sources() -> None:
     model.close()
     assert cpu.close_calls == 1
     assert battery.closed
+
+
+def on_battery(rate_w: float) -> BatteryReading:
+    return BatteryReading(on_ac=False, rate_w=rate_w)
+
+
+PLUGGED_IN = BatteryReading(on_ac=True, rate_w=None)
+
+
+def laptop_model(
+    battery: FakeBattery,
+    clock: FakeClock,
+    cpu_w: float = 7,
+    learned_other_w: float | None = None,
+    settings: Settings = LAPTOP,
+    **options: Any,
+) -> PowerModel:
+    options.setdefault("load", INTEGRATED_ONLY)
+    return make_model(
+        cpu=[FakeSource("cpu", [measured(cpu_w)])],
+        settings=settings,
+        battery=battery,
+        clock=clock,
+        learned_other_w=learned_other_w,
+        profile_other_w=LAPTOP.other_w,
+        **options,
+    )
+
+
+def run_for(model: PowerModel, clock: FakeClock, seconds: int, step: float = 1.0) -> None:
+    for _ in range(seconds):
+        clock.now += step
+        model.sample()
+
+
+def test_learns_other_components_after_a_minute_on_battery() -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(28)), clock)
+    model.sample()
+    run_for(model, clock, 59)
+    assert model.learned_other_w is None
+    run_for(model, clock, 1)
+    assert model.learned_other_w == pytest.approx(21)
+
+
+def test_learned_value_moves_with_a_120_s_time_constant() -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(37)), clock, learned_other_w=10)
+    model.sample()
+    run_for(model, clock, 120)
+    assert model.learned_other_w == pytest.approx(10 + 20 * (1 - (120 / 121) ** 120))
+
+
+def test_first_minute_is_not_dominated_by_the_first_sample() -> None:
+    clock = FakeClock()
+    battery = FakeBattery(on_battery(17))
+    model = laptop_model(battery, clock)
+    model.sample()
+    run_for(model, clock, 30)
+    battery.reading = on_battery(37)
+    run_for(model, clock, 30)
+    older_half = (120 / 121) ** 30
+    assert model.learned_other_w == pytest.approx((10 * older_half + 30) / (older_half + 1))
+
+
+@pytest.mark.parametrize("step", [0.0, 6.0], ids=["clock stalled", "gap after sleep"])
+def test_samples_without_a_usable_interval_are_skipped(step: float) -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(28)), clock)
+    model.sample()
+    run_for(model, clock, 100, step=step)
+    assert model.learned_other_w is None
+
+
+def test_time_plugged_in_does_not_count_towards_learning() -> None:
+    clock = FakeClock()
+    battery = FakeBattery(on_battery(28))
+    model = laptop_model(battery, clock)
+    model.sample()
+    run_for(model, clock, 30)
+    battery.reading = PLUGGED_IN
+    run_for(model, clock, 3)
+    battery.reading = on_battery(28)
+    run_for(model, clock, 30)
+    assert model.learned_other_w is None
+    run_for(model, clock, 1)
+    assert model.learned_other_w == pytest.approx(21)
+
+
+@pytest.mark.parametrize(("battery_w", "learned"), [(5, 0.0), (400, 150.0)])
+def test_learned_value_is_clamped(battery_w: float, learned: float) -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(battery_w)), clock, cpu_w=30)
+    model.sample()
+    run_for(model, clock, 60)
+    assert model.learned_other_w == pytest.approx(learned)
+
+
+def test_discrete_gpu_power_is_subtracted_from_the_battery_draw() -> None:
+    clock = FakeClock()
+    model = laptop_model(
+        FakeBattery(on_battery(60)),
+        clock,
+        cpu_w=10,
+        gpu=[FakeSource("gpu", [measured(20)])],
+        load=FakeLoad(discrete=True),
+    )
+    model.sample()
+    run_for(model, clock, 60)
+    assert model.learned_other_w == pytest.approx(30)
+
+
+def test_gpu_estimate_is_not_subtracted_without_a_discrete_gpu() -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(28)), clock, gpu=[estimate("gpu", 5)])
+    model.sample()
+    run_for(model, clock, 60)
+    assert model.learned_other_w == pytest.approx(21)
+
+
+def test_plugged_in_uses_the_learned_value_at_the_default_setting() -> None:
+    clock = FakeClock()
+    battery = FakeBattery(on_battery(28))
+    model = laptop_model(battery, clock)
+    model.sample()
+    run_for(model, clock, 60)
+    battery.reading = PLUGGED_IN
+    snapshot = model.sample()
+    assert snapshot.parts[2] == Part("Other", pytest.approx(21), False, "learned on battery")
+    assert snapshot.wall_w == pytest.approx((7 + 21) / 0.90)
+    assert snapshot.peak_w == pytest.approx((45 + 21) / 0.90)
+
+
+def test_saved_learned_value_is_used_right_away() -> None:
+    model = laptop_model(FakeBattery(PLUGGED_IN), FakeClock(), learned_other_w=18)
+    assert model.learned_other_w == 18
+    snapshot = model.sample()
+    assert snapshot.parts[2] == Part("Other", 18, False, "learned on battery")
+
+
+def test_other_components_set_in_settings_win_over_the_learned_value() -> None:
+    model = laptop_model(
+        FakeBattery(PLUGGED_IN),
+        FakeClock(),
+        learned_other_w=18,
+        settings=replace(LAPTOP, other_w=15),
+    )
+    snapshot = model.sample()
+    assert snapshot.parts[2] == Part("Other", 15, False, "estimated")
+    assert snapshot.wall_w == pytest.approx((7 + 15) / 0.90)
+
+
+def test_learned_value_is_unused_without_a_profile_default() -> None:
+    model = make_model(settings=LAPTOP, learned_other_w=18)
+    assert model.sample().parts[2] == Part("Other", 10, False, "estimated")
+
+
+def test_battery_breakdown_is_unchanged_while_learning() -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(28)), clock)
+    model.sample()
+    run_for(model, clock, 60)
+    assert [p.label for p in model.sample().parts] == ["Battery", "Charging loss"]
+
+
+def test_desktop_never_learns() -> None:
+    clock = FakeClock()
+    model = make_model(clock=clock, profile_other_w=DESKTOP.other_w)
+    model.sample()
+    run_for(model, clock, 120)
+    assert model.learned_other_w is None
+    assert model.sample().parts[2] == Part("Other", 25, False, "estimated")
