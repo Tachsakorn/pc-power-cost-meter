@@ -32,6 +32,11 @@ strict = true
 packages = ["power_meter"]
 mypy_path = "src"
 
+[[tool.mypy.overrides]]
+# nvidia-ml-py ships without type information.
+module = ["pynvml"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
