@@ -140,7 +140,7 @@ The battery is not a `PowerSource`: it replaces the whole component sum rather t
 | Whole laptop (on battery only) | battery discharge rate | the component sum above |
 
 - `util` is PDH `% Processor Utility / 100`, clamped to 0–1. `util_3d` is the 3D engine utilisation summed per adapter LUID (PDH lists one instance per process), clamped to 0–1.
-- Only discrete hardware adapters count towards `util_3d`. DXCore classifies the adapters once at startup (`IsHardware` and not `IsIntegrated`); an integrated GPU's power is already part of the CPU package reading, so estimating it too would count it twice. If DXCore can't classify the adapters, every adapter counts.
+- Only discrete hardware adapters count towards `util_3d`. DXCore classifies the adapters once at startup (`IsHardware` and not `IsIntegrated`); an integrated GPU's power is already part of the CPU package reading, so estimating it too would count it twice. If DXCore can't classify the adapters, every adapter counts. With no discrete GPU the estimate is 0 W and the GPU row of the breakdown reads "included in CPU".
 - The estimate uses the busiest discrete adapter only, because summing would add an idle floor for every idle card. With several discrete GPUs and no measured GPU source, it reads low.
 - A source that fails 3 reads in a row is demoted to the next one in its chain. Every 60 s the best demoted source is retried, and promoted back if it returns a valid reading.
 - A source whose `open()`, `read()` or `close()` raises is treated as unavailable or as a failed read, and the error is logged once.

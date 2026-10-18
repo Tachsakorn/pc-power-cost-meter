@@ -223,8 +223,9 @@ class PowerModel:
         now = self._clock()
         cpu = self._read("cpu", now)
         gpu = self._read("gpu", now)
-        # The GPU estimator reads 0 W only when no discrete adapter is present, so an
-        # integrated-only PC is judged against the CPU's power budget alone.
+        # The GPU estimator reads 0 W only when no discrete adapter is present. An integrated
+        # GPU draws from the CPU package, so it is shown as part of the CPU and the usage level
+        # is judged against the CPU's power budget alone.
         has_discrete_gpu = gpu.measured or gpu.watts > 0
         s = self._settings
 
@@ -245,7 +246,9 @@ class PowerModel:
             wall_w = dc_w / s.psu_efficiency + s.extra_w
             parts = [
                 _component_part("CPU", cpu),
-                _component_part("GPU", gpu),
+                _component_part("GPU", gpu)
+                if has_discrete_gpu
+                else Part("GPU", 0.0, False, "included in CPU"),
                 Part("Other", s.other_w, False, "estimated"),
                 Part(
                     "PSU loss",

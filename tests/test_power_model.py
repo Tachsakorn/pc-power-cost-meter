@@ -7,6 +7,7 @@ from fakes import FakeBattery, FakeLoad, FakeSource
 from power_meter.power_model import (
     FAILS_BEFORE_DEMOTE,
     RETRY_DEMOTED_S,
+    Part,
     PowerModel,
     PowerSnapshot,
     usage_label,
@@ -284,6 +285,16 @@ def test_battery_usage_label_without_discrete_gpu() -> None:
     snapshot = make_model(settings=LAPTOP, battery=battery).sample()
     assert snapshot.wall_w == pytest.approx(31)
     assert snapshot.usage_label == "Heavy use"
+
+
+def test_gpu_part_without_discrete_gpu() -> None:
+    snapshot = make_model(settings=LAPTOP).sample()
+    assert snapshot.parts[1] == Part("GPU", 0.0, False, "included in CPU")
+
+
+def test_gpu_part_with_discrete_gpu_estimate() -> None:
+    snapshot = make_model(gpu=[estimate("gpu", 15)]).sample()
+    assert snapshot.parts[1] == Part("GPU", 15, False, "estimated")
 
 
 def test_budget_includes_gpu_tdp_with_measured_idle_gpu() -> None:
