@@ -31,8 +31,7 @@ class CpuEstimate:
 class GpuEstimate:
     """GPU power from the 3D utilisation of the busiest adapter.
 
-    PDH lists every adapter, including idle secondary ones and integrated GPUs whose power is
-    already in the CPU package, so summing them would add phantom watts.
+    Summing adapters would add the idle floor once per idle card.
     """
 
     component: Component = "gpu"

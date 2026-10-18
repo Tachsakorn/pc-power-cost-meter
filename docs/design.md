@@ -122,14 +122,14 @@ class PowerSource(Protocol):
 | Component | 1st choice (measured) | Fallback (estimated) |
 |---|---|---|
 | CPU | Energy Meter `*_pkg` instances, summed (mW → W) | `cpu_tdp × (0.30 + 0.70 × util)` |
-| GPU | ADL (AMD) or NVML (NVIDIA); sum all discrete GPUs | `gpu_tdp × (0.10 + 0.90 × util_3d)` of the busiest adapter |
+| GPU | ADL (AMD) or NVML (NVIDIA); sum all discrete GPUs | `gpu_tdp × (0.10 + 0.90 × util_3d)` of the busiest discrete adapter |
 | Whole system (laptop on battery only) | battery discharge rate | n/a; use the component sum |
 
 - `util` is PDH `% Processor Utility / 100`, clamped to 0–1. `util_3d` is the summed 3D engine utilisation per adapter LUID, clamped to 0–1.
 - A source that fails 3 reads in a row is demoted to its fallback. Every 60 s, demoted sources are retried.
 - Sanity limits: readings below 0 W or above 1000 W are discarded as a failed read.
 - Integrated GPUs with no measured source are treated as part of the CPU package and are not estimated separately, to avoid double counting.
-- With several discrete GPUs and no measured GPU source, the estimate counts only the busiest one, so it reads low.
+- The estimate uses the busiest discrete adapter only. With several discrete GPUs and no measured GPU source, it reads low.
 
 ### Whole-PC wall power
 
