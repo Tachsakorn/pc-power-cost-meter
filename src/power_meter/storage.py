@@ -72,7 +72,10 @@ def _set_aside(path: Path) -> None:
     try:
         os.replace(path, path.with_name(path.name + ".bak"))
     except OSError as exc:
-        logger.warning("Could not back up unreadable %s: %s", path.name, exc)
+        # The message alone: the full path would put the Windows user name in the log.
+        logger.warning(
+            "Could not back up unreadable %s: %s", path.name, exc.strerror or type(exc).__name__
+        )
 
 
 def _read_json(path: Path) -> dict[str, object] | None:
@@ -82,7 +85,7 @@ def _read_json(path: Path) -> dict[str, object] | None:
     except FileNotFoundError:
         return None
     except OSError as exc:
-        logger.warning("Could not read %s: %s", path.name, exc)
+        logger.warning("Could not read %s: %s", path.name, exc.strerror or type(exc).__name__)
         return None
     except (ValueError, RecursionError):
         _set_aside(path)

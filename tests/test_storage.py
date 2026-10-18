@@ -1,4 +1,5 @@
 import json
+import logging
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -184,6 +185,31 @@ def test_failed_rename_keeps_old_file_and_removes_tmp(
         atomic_write_json(target, {"schema": 1, "cost_thb": 2.5})
     assert json.loads(target.read_text())["cost_thb"] == 1.5
     assert [p.name for p in tmp_path.iterdir()] == ["state.json"]
+
+
+def test_unreadable_file_is_logged_without_its_path(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    (tmp_path / "config.json").mkdir()
+    with caplog.at_level(logging.WARNING):
+        assert load_settings(tmp_path, is_laptop=False) == DEFAULTS
+    assert "config.json" in caplog.text
+    assert str(tmp_path) not in caplog.text
+
+
+def test_failed_backup_is_logged_without_its_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    (tmp_path / "state.json").write_text("{broken")
+
+    def refuse(src: object, dst: object) -> None:
+        raise PermissionError(13, "Access is denied", str(src))
+
+    monkeypatch.setattr(storage.os, "replace", refuse)
+    with caplog.at_level(logging.WARNING):
+        assert load_totals(tmp_path) == Totals()
+    assert "Access is denied" in caplog.text
+    assert str(tmp_path) not in caplog.text
 
 
 def test_resolve_prefers_writable_primary(tmp_path: Path) -> None:
