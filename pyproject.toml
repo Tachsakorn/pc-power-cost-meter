@@ -33,9 +33,14 @@ packages = ["power_meter"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-# nvidia-ml-py ships without type information.
-module = ["pynvml"]
+# nvidia-ml-py and customtkinter ship without type information.
+module = ["pynvml", "customtkinter"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Views subclass customtkinter widgets, which are untyped.
+module = ["power_meter.ui.*"]
+disallow_subclassing_any = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
