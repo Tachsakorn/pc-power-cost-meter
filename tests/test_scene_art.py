@@ -59,9 +59,17 @@ def test_high_has_more_lit_pixels_than_idle(art: SceneArt) -> None:
 
 def test_dormant_is_still_while_high_moves_within_a_canopy_step(art: SceneArt) -> None:
     assert art.frame(SceneState.DORMANT, 0, False, True) == art.frame(
-        SceneState.DORMANT, 1, False, True
+        SceneState.DORMANT, 2, False, True
     )
-    assert art.frame(SceneState.HIGH, 0, False, True) != art.frame(SceneState.HIGH, 1, False, True)
+    assert art.frame(SceneState.HIGH, 0, False, True) != art.frame(SceneState.HIGH, 2, False, True)
+
+
+def test_rings_shimmer_around_the_core(art: SceneArt) -> None:
+    cx, cy = 64, 115
+    box = (cx - 18, cy - 18, cx + 18, cy + 18)
+    first = art.frame(SceneState.HIGH, 0, False, True).crop(box)
+    second = art.frame(SceneState.HIGH, 2, False, True).crop(box)
+    assert first != second
 
 
 def test_static_frame_ignores_the_tick(art: SceneArt) -> None:
