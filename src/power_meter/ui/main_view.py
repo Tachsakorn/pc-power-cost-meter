@@ -24,6 +24,7 @@ from power_meter.ui.widgets import (
     pick_icons,
     row,
     set_text,
+    spaced,
 )
 
 RESET_CONFIRM_MS: Final = 3000
@@ -131,15 +132,9 @@ SIZE_CURRENCY: Final = 22
 SIZE_UNIT: Final = 18
 STEPPER_BUTTON: Final = 24
 BAR_H: Final = 3
-HAIR_SPACE: Final = "\u200a"
 
 STATUS_ROW, GAUGE_ROW, DETAILS_ROW = 0, 1, 8
 ROW_COUNT: Final = 11
-
-
-def spaced(caption: str) -> str:
-    """Letter-spacing for small uppercase captions, which Tk fonts can't do themselves."""
-    return HAIR_SPACE.join(caption)
 
 
 class DetailCells(NamedTuple):

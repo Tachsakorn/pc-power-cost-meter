@@ -1,5 +1,6 @@
 import tkinter
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from typing import Any, Final, Literal
 
 import customtkinter as ctk
@@ -19,6 +20,7 @@ from power_meter.ui.theme import Palette
 from power_meter.ui.widgets import (
     CONTROL_H,
     Button,
+    Checkbox,
     Dropdown,
     Field,
     Painter,
@@ -28,6 +30,7 @@ from power_meter.ui.widgets import (
     label,
     row,
     set_text,
+    spaced,
 )
 
 type Theme = Literal["dark", "light"]
@@ -89,6 +92,7 @@ class SettingsView(ctk.CTkFrame):
         self._meter_type = settings.meter_type
         self._band = settings.standard_band
         self._theme: Theme = settings.theme
+        self._animate = settings.animate_scene
 
         self._font_body = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY)
         self._font_strong = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY, "bold")
@@ -156,14 +160,22 @@ class SettingsView(ctk.CTkFrame):
         self._theme_choice.set(self._theme)
         self._theme_choice.grid(row=5, column=0, sticky="w", padx=XL, pady=(XS, 0))
 
+        # The checkbox's focus ring and padding take S on each side, so the inset keeps its box on
+        # the content edge.
+        self._animate_box = Checkbox(
+            content, self._painter, "Animate the scene", self._font_body, self._animate_chosen
+        )
+        self._animate_box.set(self._animate)
+        self._animate_box.grid(row=6, column=0, sticky="w", padx=XL - S, pady=(S, 0))
+
         # Ghost buttons pad their text by about S; the inset keeps it on the content edge.
         self._advanced_toggle = ghost_button(
             self._painter, content, "▸ Advanced settings", self._toggle_advanced, self._font_body
         )
-        self._advanced_toggle.grid(row=6, column=0, sticky="w", padx=XL - S, pady=(L, 0))
+        self._advanced_toggle.grid(row=7, column=0, sticky="w", padx=XL - S, pady=(L, 0))
         self._advanced = row(content)
         self._advanced.grid_columnconfigure(0, weight=1)
-        self._advanced.grid(row=7, column=0, sticky="ew", padx=XL, pady=(XS, 0))
+        self._advanced.grid(row=8, column=0, sticky="ew", padx=XL, pady=(XS, 0))
         for i, (name, (title, caption, unit)) in enumerate(HARDWARE_LABELS.items()):
             field = Field(
                 self._advanced, self._painter, title, caption, unit, self._vars[name], **fonts
@@ -184,7 +196,7 @@ class SettingsView(ctk.CTkFrame):
 
         label(
             self._painter, content, f"Version {__version__}", self._font_caption, "text_muted"
-        ).grid(row=8, column=0, sticky="w", padx=XL, pady=(L, M))
+        ).grid(row=9, column=0, sticky="w", padx=XL, pady=(L, M))
 
         footer = row(self)
         footer.grid(row=2, column=0, sticky="ew", padx=XL, pady=(M, L))
@@ -233,7 +245,7 @@ class SettingsView(ctk.CTkFrame):
         super().destroy()
 
     def _caption(self, master: Any, text: str) -> Any:
-        return label(self._painter, master, text, self._font_body, "text_muted")
+        return label(self._painter, master, spaced(text.upper()), self._font_caption, "text_muted")
 
     def _form(self) -> dict[str, str]:
         return {
@@ -283,6 +295,9 @@ class SettingsView(ctk.CTkFrame):
         self._theme = value
         self._on_theme_change(value)
 
+    def _animate_chosen(self, on: bool) -> None:
+        self._animate = on
+
     def _toggle_advanced(self) -> None:
         if self._advanced.winfo_manager():
             self._advanced.grid_remove()
@@ -303,7 +318,7 @@ class SettingsView(ctk.CTkFrame):
     def _save(self) -> None:
         settings, _ = settings_from_form(self._base, self._form())
         if settings is not None:
-            self._on_save(settings)
+            self._on_save(replace(settings, animate_scene=self._animate))
 
     def _cancel(self) -> None:
         if self._theme != self._base.theme:

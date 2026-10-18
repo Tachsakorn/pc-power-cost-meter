@@ -57,6 +57,7 @@ class Settings:
     gpu_tdp_w: float
     theme: Literal["dark", "light"]
     hours_per_day: int
+    animate_scene: bool
 
 
 def default_settings(is_laptop: bool) -> Settings:
@@ -75,6 +76,7 @@ def default_settings(is_laptop: bool) -> Settings:
         gpu_tdp_w=100 if is_laptop else 150,
         theme="dark",
         hours_per_day=5,
+        animate_scene=True,
     )
 
 

@@ -14,6 +14,9 @@ FOCUS_RING_W: Final = 2
 CONTROL_H: Final = 36
 UNIT_W: Final = 64
 ICON_BUTTON: Final = 32
+BOX_SIZE: Final = 20
+BOX_RADIUS: Final = 5
+HAIR_SPACE: Final = "\u200a"
 
 
 class Painter:
@@ -71,6 +74,11 @@ class Button(ctk.CTkButton):
 
 def row(master: Any) -> Any:
     return ctk.CTkFrame(master, corner_radius=0, fg_color="transparent")
+
+
+def spaced(caption: str) -> str:
+    """Letter-spacing for small uppercase captions, which Tk fonts can't do themselves."""
+    return HAIR_SPACE.join(caption)
 
 
 def set_text(widget: Any, text: str) -> None:
@@ -139,6 +147,65 @@ def icon_button(
         button, "<FocusOut>", lambda _e: painter.paint(button, border_color="line"), add="+"
     )
     return button
+
+
+class Checkbox(ctk.CTkFrame):
+    """A tick box with its label. The frame around it is the Tab stop; it shows the focus ring and
+    Space toggles it."""
+
+    def __init__(
+        self,
+        master: Any,
+        painter: Painter,
+        text: str,
+        font: Any,
+        command: Callable[[bool], None],
+    ) -> None:
+        super().__init__(
+            master, corner_radius=theme.RADIUS, border_width=FOCUS_RING_W, fg_color="transparent"
+        )
+        self._painter = painter
+        self._command = command
+        self._box = ctk.CTkCheckBox(
+            self,
+            text=text,
+            font=font,
+            width=0,
+            checkbox_width=BOX_SIZE,
+            checkbox_height=BOX_SIZE,
+            corner_radius=BOX_RADIUS,
+            border_width=2,
+            command=self._toggled,
+        )
+        painter.paint(
+            self._box,
+            fg_color="accent",
+            hover_color="accent",
+            border_color="line",
+            checkmark_color="background",
+            text_color="text",
+        )
+        painter.paint(self, border_color="background")
+        self._box.grid(row=0, column=0, padx=S - FOCUS_RING_W, pady=XS)
+        tkinter.Frame.configure(self, takefocus=1)
+        tkinter.Misc.bind(self, "<FocusIn>", lambda _e: painter.paint(self, border_color="focus"))
+        tkinter.Misc.bind(
+            self, "<FocusOut>", lambda _e: painter.paint(self, border_color="background")
+        )
+        tkinter.Misc.bind(self, "<KeyRelease-space>", lambda _e: self._box.toggle())
+
+    def get(self) -> bool:
+        return bool(self._box.get())
+
+    def set(self, on: bool) -> None:
+        if on:
+            self._box.select()
+        else:
+            self._box.deselect()
+
+    def _toggled(self) -> None:
+        self.focus_set()
+        self._command(self.get())
 
 
 class Icons(NamedTuple):

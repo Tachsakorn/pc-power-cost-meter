@@ -108,7 +108,7 @@ class App(ctk.CTk):
             on_toggle_theme=self._toggle_theme,
             on_hours_change=self._hours_changed,
         )
-        self._stage.set_animate(windows_animations_enabled())
+        self._apply_animation()
         self._stage.start()
         self._poll_job = self.after_idle(self._poll)
 
@@ -140,6 +140,10 @@ class App(ctk.CTk):
         else:
             self._save_failed = False
         self._sampler.apply_settings(settings)
+        self._apply_animation()
+
+    def _apply_animation(self) -> None:
+        self._stage.set_animate(self._settings.animate_scene and windows_animations_enabled())
 
     def _apply_theme(self, name: Theme) -> None:
         ctk.set_appearance_mode(name)

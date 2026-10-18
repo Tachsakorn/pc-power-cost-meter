@@ -124,6 +124,10 @@ def _theme(raw: object, default: Literal["dark", "light"]) -> Literal["dark", "l
     return default
 
 
+def _flag(raw: object, default: bool) -> bool:
+    return raw if isinstance(raw, bool) else default
+
+
 def _holidays(raw: object, default: tuple[date, ...]) -> tuple[date, ...]:
     if not isinstance(raw, list):
         return default
@@ -157,6 +161,7 @@ def load_settings(data_dir: Path | None, is_laptop: bool) -> Settings:
         gpu_tdp_w=number("gpu_tdp_w"),
         theme=_theme(stored.get("theme"), defaults.theme),
         hours_per_day=int(number("hours_per_day")),
+        animate_scene=_flag(stored.get("animate_scene"), defaults.animate_scene),
     )
 
 

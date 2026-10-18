@@ -117,6 +117,22 @@ def test_retired_band_name_loads_as_the_default_band(tmp_path: Path) -> None:
     assert loaded.other_w == 40
 
 
+def test_animate_scene_roundtrips(tmp_path: Path) -> None:
+    save_settings(tmp_path, replace(DEFAULTS, animate_scene=False))
+    assert load_settings(tmp_path, is_laptop=False).animate_scene is False
+
+
+@pytest.mark.parametrize("raw", ["yes", "false", 1, 0, None, [False]])
+def test_animate_scene_rejects_non_booleans(tmp_path: Path, raw: object) -> None:
+    write_config(tmp_path, animate_scene=raw)
+    assert load_settings(tmp_path, is_laptop=False).animate_scene is True
+
+
+def test_missing_animate_scene_defaults_on(tmp_path: Path) -> None:
+    write_config(tmp_path, other_w=40)
+    assert load_settings(tmp_path, is_laptop=False).animate_scene is True
+
+
 def test_unknown_keys_are_ignored(tmp_path: Path) -> None:
     write_config(tmp_path, other_w=40, colour="red")
     assert load_settings(tmp_path, is_laptop=False).other_w == 40

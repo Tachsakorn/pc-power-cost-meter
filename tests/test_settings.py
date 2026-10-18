@@ -23,6 +23,11 @@ def test_desktop_defaults() -> None:
     assert s.hours_per_day == 5
 
 
+def test_animate_scene_defaults_on() -> None:
+    assert default_settings(is_laptop=False).animate_scene is True
+    assert default_settings(is_laptop=True).animate_scene is True
+
+
 def test_laptop_defaults() -> None:
     s = default_settings(is_laptop=True)
     assert s.other_w == 10

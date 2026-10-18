@@ -1,6 +1,6 @@
 import time
 import tkinter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from importlib import resources
 from pathlib import Path
@@ -24,6 +24,7 @@ from power_meter.ui.scene.backdrop import Backdrop
 from power_meter.ui.scene.state import SceneState, caption
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import DARK, LIGHT
+from power_meter.ui.widgets import HAIR_SPACE, Checkbox
 
 
 def snapshot(*parts: Part, on_battery: bool = False) -> PowerSnapshot:
@@ -170,14 +171,19 @@ def test_window_smoke(tmp_path: Path) -> None:
             app.destroy()
 
 
-def open_app(tmp_path: Path, sampler: FakeSampler, settings: Settings | None = None) -> App:
+def open_app(
+    tmp_path: Path,
+    sampler: FakeSampler,
+    settings: Settings | None = None,
+    on_save: Callable[[Settings], None] = lambda _settings: None,
+) -> App:
     try:
         app = App(
             cast(Sampler, sampler),
             settings or default_settings(is_laptop=False),
             HolidayCalendar.bundled(),
             tmp_path,
-            lambda _settings: None,
+            on_save,
             lambda: None,
         )
     except tkinter.TclError as exc:
@@ -303,6 +309,117 @@ def test_scene_caption_follows_sampler_status(tmp_path: Path) -> None:
         sampler.state = running
         pump(app)
         assert caption(SceneState.ACTIVE) in caption_text(stage)
+    finally:
+        close(app)
+
+
+def checkbox_of(app: App) -> Checkbox:
+    [box] = [w for w in descendants(app) if isinstance(w, Checkbox)]
+    return box
+
+
+def press_space(app: App, box: Checkbox) -> None:
+    box.focus_force()
+    box.event_generate("<KeyPress-space>")
+    box.event_generate("<KeyRelease-space>")
+    pump(app, 0.1)
+
+
+def test_settings_checkbox_turns_animation_off(tmp_path: Path) -> None:
+    saved: list[Settings] = []
+    app = open_app(tmp_path, FakeSampler(), on_save=saved.append)
+    try:
+        assert pending_ticks(app) == 1
+        click(app, "Settings")
+        box = checkbox_of(app)
+        assert box.get() is True
+
+        press_space(app, box)
+        click(app, "Save")
+
+        assert [s.animate_scene for s in saved] == [False]
+        assert pending_ticks(app) == 0
+    finally:
+        close(app)
+
+
+def test_cancel_discards_the_animation_choice(tmp_path: Path) -> None:
+    saved: list[Settings] = []
+    app = open_app(tmp_path, FakeSampler(), on_save=saved.append)
+    try:
+        click(app, "Settings")
+        box = checkbox_of(app)
+        press_space(app, box)
+        click(app, "Cancel")
+
+        assert saved == []
+        assert pending_ticks(app) == 1
+        click(app, "Settings")
+        assert checkbox_of(app).get() is True
+    finally:
+        close(app)
+
+
+def test_animation_choice_is_kept_when_other_settings_change(tmp_path: Path) -> None:
+    saved: list[Settings] = []
+    settings = replace(default_settings(is_laptop=False), animate_scene=False)
+    app = open_app(tmp_path, FakeSampler(), settings, on_save=saved.append)
+    try:
+        assert pending_ticks(app) == 0
+        click(app, "Settings")
+        assert checkbox_of(app).get() is False
+        click(app, "TOU")
+        click(app, "Save")
+
+        assert saved[-1].animate_scene is False
+        assert pending_ticks(app) == 0
+    finally:
+        close(app)
+
+
+def test_settings_sections_use_the_dashboard_caption_style(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        click(app, "Settings")
+        [theme_caption] = [
+            w
+            for w in descendants(app)
+            if isinstance(w, ctk.CTkLabel) and w.cget("text").replace(HAIR_SPACE, "") == "THEME"
+        ]
+
+        assert theme_caption.cget("font").cget("size") == 11
+        assert theme_caption.cget("text_color") == DARK.text_muted
+    finally:
+        close(app)
+
+
+def test_animation_checkbox_follows_the_theme(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        click(app, "Settings")
+        box = checkbox_of(app)
+        assert box.cget("border_color") == DARK.background
+
+        click(app, "Light")
+
+        assert box.cget("border_color") == LIGHT.background
+        assert box.winfo_children()[0].cget("fg_color") == LIGHT.accent
+    finally:
+        close(app)
+
+
+def test_space_toggles_the_focused_animation_checkbox(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        click(app, "Settings")
+        box = checkbox_of(app)
+        box.focus_force()
+        pump(app, 0.1)
+        assert app.focus_get() is box
+
+        press_space(app, box)
+
+        assert box.get() is False
     finally:
         close(app)
 
