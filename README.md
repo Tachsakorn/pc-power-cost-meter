@@ -8,6 +8,15 @@ is costing you in Thai Baht, with the total ticking up as you use it.
 It runs fully offline, needs no administrator rights and no helper software, and tells you which
 numbers come from real sensors and which are estimates.
 
+<p align="center">
+  <img src="docs/screenshots/main-dark.png" alt="Main window in dark mode" width="300">
+  <img src="docs/screenshots/main-light.png" alt="Main window in light mode" width="300">
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings-dark.png" alt="Settings in dark mode" width="300">
+  <img src="docs/screenshots/settings-light.png" alt="Settings in light mode" width="300">
+</p>
+
 ## Features
 
 - **Live cost meter.** Total spent to four decimal places (฿ 1.2847), current wall power in watts,
