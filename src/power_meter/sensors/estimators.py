@@ -29,7 +29,11 @@ class CpuEstimate:
 
 
 class GpuEstimate:
-    """GPU power from 3D utilisation, summed over every adapter the load provider reports."""
+    """GPU power from the 3D utilisation of the busiest adapter.
+
+    PDH lists every adapter, including idle secondary ones and integrated GPUs whose power is
+    already in the CPU package, so summing them would add phantom watts.
+    """
 
     component: Component = "gpu"
 
@@ -44,10 +48,10 @@ class GpuEstimate:
         return True
 
     def read(self) -> Reading:
-        watts = sum(
-            self._tdp_w * (_GPU_IDLE_SHARE + (1 - _GPU_IDLE_SHARE) * util)
-            for util in self._load.gpu_utilizations().values()
-        )
+        utils = self._load.gpu_utilizations().values()
+        if not utils:
+            return Reading(0.0, "Estimate", measured=False)
+        watts = self._tdp_w * (_GPU_IDLE_SHARE + (1 - _GPU_IDLE_SHARE) * max(utils))
         return Reading(watts, "Estimate", measured=False)
 
     def close(self) -> None:

@@ -15,9 +15,14 @@ def test_cpu_estimate_util_unknown() -> None:
     assert CpuEstimate(FakeLoad(cpu=None), tdp_w=65).read().watts == pytest.approx(19.5)
 
 
-def test_gpu_estimate_sums_adapters() -> None:
+def test_gpu_estimate_uses_busiest_adapter() -> None:
     load = FakeLoad(gpus={"luid-a": 0.0, "luid-b": 1.0})
-    assert GpuEstimate(load, tdp_w=100).read().watts == pytest.approx(10 + 100)
+    assert GpuEstimate(load, tdp_w=100).read().watts == pytest.approx(100)
+
+
+def test_gpu_estimate_counts_idle_adapters_once() -> None:
+    load = FakeLoad(gpus={"luid-a": 0.0, "luid-b": 0.0})
+    assert GpuEstimate(load, tdp_w=100).read().watts == pytest.approx(10)
 
 
 def test_gpu_estimate_without_adapters_is_zero() -> None:

@@ -46,5 +46,8 @@ class LoadProvider(Protocol):
         ...
 
     def gpu_utilizations(self) -> Mapping[str, float]:
-        """3D engine utilisation 0..1 per adapter LUID."""
+        """3D engine utilisation 0..1 for every 3D-capable adapter PDH sees, keyed by LUID.
+
+        The GPU estimate uses only the busiest adapter.
+        """
         ...
