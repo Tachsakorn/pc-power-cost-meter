@@ -127,6 +127,8 @@ def icon_button(
         fg_color="surface",
         hover_color="track",
         text_color="text",
+        # Inactive controls are exempt from the text contrast minimum; the faint glyph is what
+        # shows they are inactive.
         text_color_disabled="text_faint",
         border_color="line",
     )

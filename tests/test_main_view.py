@@ -1,3 +1,4 @@
+import time
 import tkinter
 from collections.abc import Iterator
 from dataclasses import replace
@@ -8,6 +9,7 @@ import pytest
 from PIL import Image
 
 from power_meter.ui import main_view
+from power_meter.ui.gauge import render_gauge
 from power_meter.ui.main_view import DetailRow, MainView, MainViewModel
 from power_meter.ui.scene.art import SceneArt
 from power_meter.ui.stage import Stage
@@ -64,15 +66,27 @@ def mapped_children(stage: Stage) -> list[Any]:
     return [child for child in stage.winfo_children() if child.winfo_ismapped()]
 
 
+def pending_reset_timers(widget: tkinter.Misc) -> int:
+    jobs = widget.tk.splitlist(widget.tk.call("after", "info"))
+    scripts = [str(widget.tk.call("after", "info", job)[0]) for job in jobs]
+    return sum("_end_reset_confirm" in script for script in scripts)
+
+
+def pump(widget: tkinter.Misc, seconds: float = 0.2) -> None:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        widget.update()
+        time.sleep(0.01)
+
+
 def test_gauge_is_drawn_again_only_when_the_lit_tick_changes(
     stage: Stage, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fractions: list[float] = []
-    original = main_view.render_gauge
 
     def counting(fraction: float, *args: Any) -> Image.Image:
         fractions.append(fraction)
-        return original(fraction, *args)
+        return render_gauge(fraction, *args)
 
     monkeypatch.setattr(main_view, "render_gauge", counting)
     view = make_view(stage)
@@ -148,3 +162,29 @@ def test_detail_rows_are_rebuilt_when_the_parts_change(stage: Stage) -> None:
     view.render(replace(BASE, details=(DetailRow("Battery", "30 W", "measured", True, 1.0),)))
 
     assert [cells.name.cget("text") for cells in view._detail_cells] == ["Battery"]
+
+
+def test_hide_disarms_reset(stage: Stage) -> None:
+    view = make_view(stage)
+    view._reset_button.invoke()
+    assert view._reset_button.cget("text") == "Click again to reset"
+
+    view.hide()
+
+    assert view._reset_button.cget("text") == "Reset"
+    assert pending_reset_timers(stage) == 0
+
+
+def test_destroying_the_stage_with_reset_armed_leaves_nothing_behind(stage: Stage) -> None:
+    errors: list[object] = []
+    root: Any = stage.winfo_toplevel()
+    root.report_callback_exception = lambda *exc: errors.append(exc)
+    view = make_view(stage)
+    view._reset_button.invoke()
+    assert pending_reset_timers(root) == 1
+
+    stage.destroy()
+    pump(root)
+
+    assert pending_reset_timers(root) == 0
+    assert errors == []

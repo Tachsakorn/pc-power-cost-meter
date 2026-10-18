@@ -295,6 +295,7 @@ class MainView:
         self._reset_button.grid(row=0, column=3)
 
         self._configure_binding = stage.bind("<Configure>", self._stage_resized, add="+")
+        self._destroy_binding = stage.bind("<Destroy>", lambda _e: self._stop(), add="+")
         self.apply_palette(palette)
 
     def render(self, vm: MainViewModel) -> None:
@@ -322,6 +323,7 @@ class MainView:
 
     def hide(self) -> None:
         self._visible = False
+        self._disarm_reset()
         for part in self._parts:
             part.grid_remove()
         self._stage.delete(GAUGE_TAG)
@@ -334,11 +336,9 @@ class MainView:
         self._show_gauge(self._fraction)
 
     def destroy(self) -> None:
-        self._visible = False
-        if self._reset_job is not None:
-            self._stage.after_cancel(self._reset_job)
-            self._reset_job = None
+        self._stop()
         self._stage.unbind("<Configure>", self._configure_binding)
+        self._stage.unbind("<Destroy>", self._destroy_binding)
         self._stage.delete(GAUGE_TAG)
         for part in self._parts:
             part.destroy()
@@ -458,7 +458,7 @@ class MainView:
             if cells.dot.cget("text") != dot:
                 cells.dot.configure(text=dot)
                 self._painter.paint(
-                    cells.dot, text_color="accent" if detail.measured else "text_faint"
+                    cells.dot, text_color="accent" if detail.measured else "text_muted"
                 )
             if float(cells.fill.place_info().get("relwidth", -1)) != detail.share:
                 cells.fill.place(relx=0, rely=0, relheight=1, relwidth=detail.share)
@@ -490,7 +490,7 @@ class MainView:
             self._painter.paint(fill, bg="text_muted")
             power = label(self._painter, self._details, "", self._font_body, "text")
             power.grid(row=i, column=2, sticky="e", pady=pady)
-            dot = label(self._painter, self._details, "", self._font_caption, "text_faint")
+            dot = label(self._painter, self._details, "", self._font_caption, "text_muted")
             dot.grid(row=i, column=3, padx=(M, XS), pady=pady)
             detail = label(self._painter, self._details, "", self._font_caption, "text_muted")
             detail.grid(row=i, column=4, sticky="w", pady=pady)
@@ -506,9 +506,21 @@ class MainView:
         # A double-click or key repeat is not a deliberate second click.
         if self._clock() - self._reset_armed_at < RESET_MIN_GAP_S:
             return
-        self._stage.after_cancel(self._reset_job)
-        self._end_reset_confirm()
+        self._disarm_reset()
         self._on_reset()
+
+    def _disarm_reset(self) -> None:
+        if self._reset_job is not None:
+            self._stage.after_cancel(self._reset_job)
+            self._end_reset_confirm()
+
+    def _stop(self) -> None:
+        """Ends pending work. Also runs when the stage is destroyed, by which time the widgets
+        are gone, so Reset's label is left alone."""
+        self._visible = False
+        if self._reset_job is not None:
+            self._stage.after_cancel(self._reset_job)
+            self._reset_job = None
 
     def _end_reset_confirm(self) -> None:
         self._reset_job = None
