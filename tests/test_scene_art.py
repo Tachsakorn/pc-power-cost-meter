@@ -1,3 +1,4 @@
+import math
 import time
 from importlib import resources
 
@@ -64,12 +65,22 @@ def test_dormant_is_still_while_high_moves_within_a_canopy_step(art: SceneArt) -
     assert art.frame(SceneState.HIGH, 0, False, True) != art.frame(SceneState.HIGH, 2, False, True)
 
 
-def test_rings_shimmer_around_the_core(art: SceneArt) -> None:
-    cx, cy = 64, 115
-    box = (cx - 18, cy - 18, cx + 18, cy + 18)
-    first = art.frame(SceneState.HIGH, 0, False, True).crop(box)
-    second = art.frame(SceneState.HIGH, 2, False, True).crop(box)
-    assert first != second
+def ring_points() -> set[tuple[int, int]]:
+    return {
+        (
+            64 + round((7 + 3 * r) * math.cos(math.radians(a))),
+            115 + round((6 + 2 * r) * math.sin(math.radians(a))),
+        )
+        for r in (1, 2, 3)
+        for a in range(0, 360, 10)
+    }
+
+
+def test_rings_shimmer_where_no_particle_travels(art: SceneArt) -> None:
+    on_paths = {point for path in art.paths for point in path}
+    first = art.frame(SceneState.HIGH, 0, False, True)
+    second = art.frame(SceneState.HIGH, 2, False, True)
+    assert any(first.getpixel(p) != second.getpixel(p) for p in ring_points() - on_paths)
 
 
 def test_static_frame_ignores_the_tick(art: SceneArt) -> None:
