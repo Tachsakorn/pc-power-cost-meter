@@ -4,11 +4,12 @@ from collections.abc import Callable, Mapping
 from typing import Final
 
 from power_meter.sensors.adapters import discrete_gpu_luids
-from power_meter.sensors.pdh import PdhQuery
+from power_meter.sensors.pdh import PdhNoData, PdhQuery
 from power_meter.sensors.warn_once import WarnOnce
 
 CPU_UTILITY: Final = r"\Processor Information(_Total)\% Processor Utility"
 GPU_3D: Final = r"\GPU Engine(*engtype_3D)\Utilization Percentage"
+STALE_AFTER_REFRESHES: Final = 5
 
 _LUID = re.compile(r"luid_(0x[0-9a-f]+_0x[0-9a-f]+)", re.IGNORECASE)
 
@@ -46,6 +47,7 @@ class PdhLoad:
         self._discrete: frozenset[str] | None = None
         self._cpu: float | None = None
         self._gpus: dict[str, float] = {}
+        self._misses: dict[int, int] = {}
         self._warn = WarnOnce(logger)
 
     def open(self) -> bool:
@@ -75,20 +77,32 @@ class PdhLoad:
         return True
 
     def refresh(self) -> None:
-        if self._query is None:
+        """Collect new values; a counter that has none keeps its last one for a few rounds."""
+        query = self._query
+        if query is None:
             return
         try:
-            self._query.collect()
-            if self._cpu_counter is not None:
-                cpu = self._query.values(self._cpu_counter)
+            query.collect()
+            collected = True
+        except Exception as exc:  # runs every sample; a bad counter must not stop the sampler
+            self._report(exc)
+            collected = False
+
+        if self._cpu_counter is not None:
+            cpu = self._read(query, self._cpu_counter, collected)
+            if cpu is not None:
                 self._cpu = _fraction(next(iter(cpu.values()))) if cpu else None
-            if self._gpu_counter is not None:
-                gpus = gpu_util_by_luid(self._query.values(self._gpu_counter))
+            elif self._is_stale(self._cpu_counter):
+                self._cpu = None
+        if self._gpu_counter is not None:
+            engines = self._read(query, self._gpu_counter, collected)
+            if engines is not None:
+                gpus = gpu_util_by_luid(engines)
                 if self._discrete is not None:
                     gpus = {luid: util for luid, util in gpus.items() if luid in self._discrete}
                 self._gpus = gpus
-        except Exception as exc:  # runs every sample; a bad counter must not stop the sampler
-            self._warn("Utilisation refresh failed: %s", exc)
+            elif self._is_stale(self._gpu_counter):
+                self._gpus = {}
 
     def cpu_utilization(self) -> float | None:
         return self._cpu
@@ -100,6 +114,25 @@ class PdhLoad:
         if self._query is not None:
             self._query.close()
             self._query = None
+
+    def _read(self, query: PdhQuery, counter: int, collected: bool) -> dict[str, float] | None:
+        values = None
+        if collected:
+            try:
+                values = query.values(counter)
+            except Exception as exc:
+                self._report(exc)
+        self._misses[counter] = 0 if values is not None else self._misses.get(counter, 0) + 1
+        return values
+
+    def _is_stale(self, counter: int) -> bool:
+        return self._misses.get(counter, 0) >= STALE_AFTER_REFRESHES
+
+    def _report(self, exc: Exception) -> None:
+        if isinstance(exc, PdhNoData):
+            logger.debug("No utilisation data this round: %s", exc)
+        else:
+            self._warn("Utilisation refresh failed: %s", exc)
 
     def _add(self, query: PdhQuery, path: str) -> int | None:
         try:

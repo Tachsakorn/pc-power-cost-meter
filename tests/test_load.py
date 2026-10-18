@@ -1,9 +1,9 @@
 import logging
 
 import pytest
-from fakes import FakePdh
+from fakes import PDH_CALC_NEGATIVE_DENOMINATOR, PDH_INVALID_HANDLE, PDH_NO_DATA, FakePdh
 
-from power_meter.sensors.load import CPU_UTILITY, GPU_3D, PdhLoad
+from power_meter.sensors.load import CPU_UTILITY, GPU_3D, STALE_AFTER_REFRESHES, PdhLoad
 from power_meter.sensors.pdh import PdhQuery
 
 DISCRETE = "0x00000000_0x00015061"
@@ -73,13 +73,70 @@ def test_refresh_failure_keeps_last_values_and_logs_once(
     dll = make_dll(cpu=30.0, discrete=60.0)
     load = open_load(dll)
     load.refresh()
-    dll.collect_status = 0xC0000BC6
+    dll.collect_status = PDH_INVALID_HANDLE
     with caplog.at_level(logging.WARNING):
         load.refresh()
         load.refresh()
     assert load.cpu_utilization() == pytest.approx(0.30)
     assert load.gpu_utilizations() == pytest.approx({DISCRETE: 0.60})
     assert len(caplog.records) == 1
+
+
+def test_no_data_round_keeps_last_values_quietly(caplog: pytest.LogCaptureFixture) -> None:
+    dll = make_dll(cpu=30.0, discrete=60.0)
+    load = open_load(dll)
+    load.refresh()
+    dll.array_status[GPU_3D] = PDH_CALC_NEGATIVE_DENOMINATOR
+    dll.counters[CPU_UTILITY]["_Total"] = 50.0
+    with caplog.at_level(logging.WARNING):
+        load.refresh()
+    assert load.cpu_utilization() == pytest.approx(0.50)
+    assert load.gpu_utilizations() == pytest.approx({DISCRETE: 0.60})
+    assert caplog.records == []
+
+
+def test_values_cleared_after_too_many_stale_refreshes() -> None:
+    dll = make_dll(cpu=30.0, discrete=60.0)
+    load = open_load(dll)
+    load.refresh()
+    dll.collect_status = PDH_NO_DATA
+    for _ in range(STALE_AFTER_REFRESHES - 2):
+        load.refresh()
+    dll.collect_status = PDH_INVALID_HANDLE
+    load.refresh()
+    assert load.cpu_utilization() == pytest.approx(0.30)
+    assert load.gpu_utilizations() == pytest.approx({DISCRETE: 0.60})
+
+    load.refresh()
+    assert load.cpu_utilization() is None
+    assert load.gpu_utilizations() == {}
+
+    dll.collect_status = 0
+    load.refresh()
+    assert load.cpu_utilization() == pytest.approx(0.30)
+
+
+def test_stale_gpu_counter_does_not_clear_cpu() -> None:
+    dll = make_dll(cpu=30.0, discrete=60.0)
+    load = open_load(dll)
+    load.refresh()
+    dll.array_status[GPU_3D] = PDH_NO_DATA
+    for _ in range(STALE_AFTER_REFRESHES):
+        load.refresh()
+    assert load.cpu_utilization() == pytest.approx(0.30)
+    assert load.gpu_utilizations() == {}
+
+
+def test_successful_refresh_restarts_the_stale_count() -> None:
+    dll = make_dll(cpu=30.0)
+    load = open_load(dll)
+    for _ in range(2):
+        load.refresh()
+        dll.array_status[CPU_UTILITY] = PDH_NO_DATA
+        for _ in range(STALE_AFTER_REFRESHES - 1):
+            load.refresh()
+        del dll.array_status[CPU_UTILITY]
+    assert load.cpu_utilization() == pytest.approx(0.30)
 
 
 def test_refresh_picks_up_new_values() -> None:

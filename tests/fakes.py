@@ -89,7 +89,7 @@ class FakePdh:
         self.calls: list[str] = []
         self.formats: list[int] = []
         self.collect_status = 0
-        self.array_status = 0
+        self.array_status: dict[str, int] = {}
         self.invalid: set[str] = set()
         self._paths: dict[int, str] = {}
         self._items: object = None
@@ -117,9 +117,10 @@ class FakePdh:
     ) -> int:
         self.calls.append("PdhGetFormattedCounterArrayW")
         self.formats.append(fmt)
-        if self.array_status:
-            return self.array_status
-        values = self.counters[self._paths[counter]]
+        path = self._paths[counter]
+        if path in self.array_status:
+            return self.array_status[path]
+        values = self.counters[path]
         count.contents.value = len(values)
         if not values:
             return 0

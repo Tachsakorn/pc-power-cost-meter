@@ -122,7 +122,7 @@ def test_values_without_valid_data_raise_no_data(status: int) -> None:
     dll = FakePdh({CPU_UTILITY: {"_Total": 1.0}})
     query = PdhQuery(dll)
     counter = query.add_english(CPU_UTILITY)
-    dll.array_status = status
+    dll.array_status[CPU_UTILITY] = status
     with pytest.raises(PdhNoData, match=f"0x{status:08X}"):
         query.values(counter)
 
@@ -139,7 +139,7 @@ def test_real_failure_is_not_no_data() -> None:
     dll = FakePdh({CPU_UTILITY: {"_Total": 1.0}})
     query = PdhQuery(dll)
     counter = query.add_english(CPU_UTILITY)
-    dll.array_status = PDH_INVALID_HANDLE
+    dll.array_status[CPU_UTILITY] = PDH_INVALID_HANDLE
     with pytest.raises(PdhError) as raised:
         query.values(counter)
     assert not isinstance(raised.value, PdhNoData)
