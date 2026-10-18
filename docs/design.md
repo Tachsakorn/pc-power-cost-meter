@@ -202,8 +202,9 @@ Known limitation: if the PC's own usage pushes the house across a tier boundary,
 | Peak | Mon–Fri 09:00–21:59:59 | 6.38 |
 | Off-peak | 22:00–08:59:59, Sat, Sun, listed holidays | 3.00 |
 
-- Holidays come from `data/holidays_th.json` (`{"2026": ["2026-12-05", …], "2027": [...]}`), bundled into the exe, plus optional user additions in `config.json`.
-- Which holidays count as off-peak (for example, substitution days) must be checked against MEA/PEA rules before the list is filled.
+- TOU energy charges are the MEA/PEA residential TOU rates for low-voltage supply (PEA 1.2.2 below 22 kV, MEA 1.3.2 below 12 kV): 5.7982 peak and 2.6369 off-peak before Ft and VAT.
+- Off-peak all day: Saturday, Sunday, National Labour Day and the regular public holidays (วันหยุดราชการตามปกติ). Substitution days, the Royal Ploughing Ceremony and one-off special holidays declared by the Cabinet follow the normal weekday schedule.
+- Holidays come from `data/holidays_th.json` (`{"source": [...], "years": {"2026": ["2026-12-05", …], "2027": [...]}}`), bundled into the exe, plus optional user additions in `config.json`.
 - The local system clock and time zone are trusted as-is.
 
 Rates and holidays never update automatically; that would require network access. The README explains how to change the rates.
@@ -343,6 +344,6 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 | 1 | Confirm ADL sensor #73's documented name; confirm the index is stable on other RDNA GPUs | Implementation (ADL SDK header) |
 | 2 | Laptop: NVML power on RTX 5070 Laptop; whether polling NVML keeps the dGPU awake (hybrid graphics) | Laptop probe before v1.0 |
 | 3 | Laptop: battery discharge rate readable as a standard user; Energy Meter on Ryzen AI | Laptop probe before v1.0 |
-| 4 | Verify TOU residential rates and holiday rules against MEA/PEA; fill `holidays_th.json` for 2026–2027 from official announcements | Implementation |
+| 4 | 2027 holidays are derived from the off-peak rule and the Bank of Thailand 2027 holiday notice; check them against the PEA/MEA 2027 off-peak calendar once it is published. The ERC can also reclassify individual days (as it did for the postponed Songkran in 2020) | Before v1.0 and each January |
 | 5 | AMD RAPL package power is self-reported by the CPU and may differ from external measurement | Documented limitation |
 | 6 | CI runner support for Python 3.15; fall back to 3.14 in CI if needed | First CI run |

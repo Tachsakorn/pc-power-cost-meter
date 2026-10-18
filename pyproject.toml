@@ -16,6 +16,9 @@ dev = ["pytest", "ruff", "mypy", "pyinstaller>=6.22"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+power_meter = ["data/holidays_th.json"]
+
 [tool.ruff]
 line-length = 100
 # tools/probe.py is a committed hardware-probe script that predates this lint config; kept unmodified.
