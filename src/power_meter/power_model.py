@@ -233,7 +233,10 @@ class _LearnedOther:
         alpha = dt / (LEARN_TIME_CONSTANT_S + dt)
         self._average += alpha * (residual_w - self._average)
         self._weight += alpha * (1 - self._weight)
+        was_ready = self._learned_s >= LEARN_READY_S
         self._learned_s += dt
+        if not was_ready and self._learned_s >= LEARN_READY_S:
+            logger.info("Other components learned on battery: %.1f W", self._average / self._weight)
 
     def pause(self) -> None:
         self._last_s = None
@@ -269,6 +272,7 @@ class PowerModel:
         self._max_wall_w = 0.0
         self._learned = _LearnedOther(learned_other_w)
         self._profile_other_w = profile_other_w
+        self._on_battery: bool | None = None
 
     @property
     def learned_other_w(self) -> float | None:
@@ -323,6 +327,15 @@ class PowerModel:
         if s.extra_w > 0:
             parts.append(Part("Extras", s.extra_w, False, "added in settings"))
 
+        on_battery = battery_w is not None
+        if self._battery is not None and on_battery != self._on_battery:
+            self._on_battery = on_battery
+            logger.info(
+                "Now on %s; Other %.1f W (%s)",
+                "battery" if on_battery else "AC power",
+                other.watts,
+                other.detail,
+            )
         self._max_wall_w = max(self._max_wall_w, wall_w)
         gpu_tdp_w = s.gpu_tdp_w if has_discrete_gpu else 0.0
         budget_w = (s.cpu_tdp_w + gpu_tdp_w + other.watts) / s.psu_efficiency + s.extra_w
@@ -330,7 +343,7 @@ class PowerModel:
         return PowerSnapshot(
             wall_w=wall_w,
             parts=tuple(parts),
-            on_battery=battery_w is not None,
+            on_battery=on_battery,
             usage_label=usage_label(wall_w, peak_w),
             all_estimated=not (cpu.measured or gpu.measured),
             peak_w=peak_w,

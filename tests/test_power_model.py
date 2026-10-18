@@ -551,3 +551,27 @@ def test_desktop_never_learns() -> None:
     run_for(model, clock, 120)
     assert model.learned_other_w is None
     assert model.sample().parts[2] == Part("Other", 25, False, "estimated")
+
+
+def test_logs_switching_power_source_and_learning(caplog: pytest.LogCaptureFixture) -> None:
+    clock = FakeClock()
+    battery = FakeBattery(PLUGGED_IN)
+    model = laptop_model(battery, clock)
+    with caplog.at_level(logging.INFO, logger="power_meter.power_model"):
+        model.sample()
+        battery.reading = on_battery(28)
+        run_for(model, clock, 61)
+        battery.reading = PLUGGED_IN
+        run_for(model, clock, 2)
+    assert caplog.messages == [
+        "Now on AC power; Other 10.0 W (estimated)",
+        "Now on battery; Other 10.0 W (estimated)",
+        "Other components learned on battery: 21.0 W",
+        "Now on AC power; Other 21.0 W (learned on battery)",
+    ]
+
+
+def test_desktop_logs_no_power_source(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="power_meter.power_model"):
+        make_model().sample()
+    assert caplog.messages == []
