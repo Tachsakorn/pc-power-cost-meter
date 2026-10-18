@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "power-meter"
 version = "0.1.0"
 description = "PC Power & Cost Meter: live PC wall power and electricity cost in Thai Baht (THB)."
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = ["customtkinter>=6.0,<7", "nvidia-ml-py>=13"]
 
