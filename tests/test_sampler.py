@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -89,10 +89,14 @@ class ManualClock:
 
 class Rig:
     def __init__(
-        self, clock: ManualClock | None = None, save: Callable[[Totals], None] | None = None
+        self,
+        clock: ManualClock | None = None,
+        save: Callable[[Totals], None] | None = None,
+        persisted: Totals | None = None,
+        interval_s: float = 0.01,
     ) -> None:
         self.model = FakeModel()
-        self.meter = Meter()
+        self.meter = Meter(persisted)
         self.saves: list[Totals] = []
         self.clock = clock or ManualClock(step=1.0)
         self.sampler = Sampler(
@@ -101,7 +105,7 @@ class Rig:
             DESKTOP,
             HolidayCalendar.bundled(),
             save or self.saves.append,
-            interval_s=0.01,
+            interval_s=interval_s,
             autosave_s=30.0,
             now=lambda: WEDNESDAY_10AM,
             mono=self.clock,
@@ -126,8 +130,8 @@ class Rig:
 def make_rig() -> Iterator[Callable[..., Rig]]:
     rigs: list[Rig] = []
 
-    def make(clock: ManualClock | None = None, save: Callable[[Totals], None] | None = None) -> Rig:
-        rig = Rig(clock, save)
+    def make(**options: Any) -> Rig:
+        rig = Rig(**options)
         rigs.append(rig)
         rig.start()
         return rig
@@ -184,6 +188,21 @@ def test_reset_command_zeroes_totals(make_rig: Callable[..., Rig]) -> None:
     assert state.totals == Totals()
     assert state.session == Totals()
     assert state.display_w == pytest.approx(50.0)
+
+
+def test_reset_is_saved_right_away(make_rig: Callable[..., Rig]) -> None:
+    rig = make_rig(persisted=Totals(12.5, 2.0, 3600.0))
+    rig.sampler.request_reset()
+    rig.feed(100.0)
+    assert rig.saves == [Totals()]
+
+
+def test_reset_requested_just_before_stop_is_saved(make_rig: Callable[..., Rig]) -> None:
+    rig = make_rig(persisted=Totals(12.5, 2.0, 3600.0), interval_s=10.0)
+    rig.sampler.request_reset()
+    rig.stop()
+    assert rig.saves
+    assert all(saved == Totals() for saved in rig.saves)
 
 
 def test_apply_settings_switches_tariff(make_rig: Callable[..., Rig]) -> None:

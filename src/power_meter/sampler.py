@@ -110,6 +110,7 @@ class Sampler(threading.Thread):
                 self._stopping.wait(RESTART_DELAY_S)
             else:
                 self._stopping.wait(self._interval_s)
+        self._run_commands()
 
     def _tick(self) -> None:
         self._run_commands()
@@ -148,6 +149,7 @@ class Sampler(threading.Thread):
     def _reset(self) -> None:
         self._meter.reset()
         self._recent_w.clear()
+        self._save()
 
     def _save(self) -> None:
         try:
