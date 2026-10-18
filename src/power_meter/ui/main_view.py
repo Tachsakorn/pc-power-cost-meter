@@ -130,7 +130,7 @@ class MainView(ctk.CTkFrame):
         )
 
         self._caption(self, "You've spent").grid(row=1, column=0, sticky="w", padx=XL, pady=(L, 0))
-        self._spent = label(self._painter, self, "", self._font_cost, "accent_cost")
+        self._spent = label(self._painter, self, "", self._font_cost, "text")
         self._spent.grid(row=2, column=0, sticky="w", padx=XL)
         self._spent_caption = self._caption(self, "")
         self._spent_caption.grid(row=3, column=0, sticky="w", padx=XL)
@@ -145,7 +145,7 @@ class MainView(ctk.CTkFrame):
 
         now_row = row(self)
         now_row.grid(row=5, column=0, sticky="ew", padx=XL)
-        self._power = label(self._painter, now_row, "", self._font_power, "accent_power")
+        self._power = label(self._painter, now_row, "", self._font_power, "accent")
         self._power.grid(row=0, column=0, sticky="sw")
         self._per_hour = label(self._painter, now_row, "", self._font_body, "text")
         baseline = self._font_power.metrics("descent") - self._font_body.metrics("descent")
@@ -156,7 +156,7 @@ class MainView(ctk.CTkFrame):
         self._usage_bar = ctk.CTkProgressBar(
             usage_row, width=160, height=S, corner_radius=theme.RADIUS
         )
-        self._painter.paint(self._usage_bar, fg_color="surface", progress_color="accent_power")
+        self._painter.paint(self._usage_bar, fg_color="surface", progress_color="accent")
         self._usage_bar.set(0)
         self._usage_bar.grid(row=0, column=0)
         self._usage = label(self._painter, usage_row, "", self._font_body, "text_muted")
@@ -198,7 +198,7 @@ class MainView(ctk.CTkFrame):
         self._price = label(self._painter, price_row, "", self._font_caption, "text_muted")
         self._price.grid(row=0, column=0, sticky="w")
         change = ghost_button(
-            self._painter, price_row, "Change", on_open_settings, self._font_body, "accent_power"
+            self._painter, price_row, "Change", on_open_settings, self._font_body, "accent"
         )
         change.grid(row=0, column=1, padx=(XS, 0))
         self._reset_button = ghost_button(

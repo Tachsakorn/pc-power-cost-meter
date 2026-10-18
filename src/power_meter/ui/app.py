@@ -210,7 +210,7 @@ def show_already_running() -> None:
         ok,
         fg_color="surface",
         hover_color="background",
-        text_color="accent_power",
+        text_color="accent",
         border_color="focus",
     )
     ok.pack(anchor="e", padx=XL, pady=(0, L))

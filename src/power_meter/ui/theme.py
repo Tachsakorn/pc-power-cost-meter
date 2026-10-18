@@ -6,41 +6,50 @@ from typing import Final
 class Palette:
     background: str
     surface: str
+    line: str
     text: str
     text_muted: str
-    accent_cost: str
-    accent_power: str
+    text_faint: str
+    accent: str
+    track: str
     error: str
     focus: str
 
 
 DARK: Final = Palette(
-    background="#1A1B26",
-    surface="#22243A",
-    text="#E6E7EE",
-    text_muted="#9A9CB0",
-    accent_cost="#2ECC71",
-    accent_power="#3498DB",
-    error="#FF6B6B",
-    focus="#3498DB",
+    background="#1A1613",
+    surface="#231E1A",
+    line="#332B25",
+    text="#F0E8DC",
+    text_muted="#A3968A",
+    text_faint="#6E635A",
+    accent="#E8B866",
+    track="#3A312A",
+    error="#FF8A70",
+    focus="#E8B866",
 )
 
 LIGHT: Final = Palette(
-    background="#F5F6FA",
-    surface="#FFFFFF",
-    text="#1A1B26",
-    text_muted="#5A5D72",
-    accent_cost="#1E8449",
-    accent_power="#1F6FA8",
-    error="#C0392B",
-    focus="#1F6FA8",
+    background="#F4EEE4",
+    surface="#FBF7F0",
+    line="#E2D8C8",
+    text="#2A2119",
+    text_muted="#74675A",
+    text_faint="#A99C8E",
+    accent="#9A5F0E",
+    track="#E6DDCF",
+    error="#B3261E",
+    focus="#9A5F0E",
 )
 
 FONT_FAMILY: Final = "Segoe UI"
+FONT_LIGHT: Final = "Segoe UI Light"
+ICON_FONTS: Final = ("Segoe Fluent Icons", "Segoe MDL2 Assets")
 SIZE_COST: Final = 40
-SIZE_POWER: Final = 22
+SIZE_POWER: Final = 54
 SIZE_BODY: Final = 13
 SIZE_CAPTION: Final = 11
+SIZE_VALUE: Final = 17
 
 SPACE: Final = (4, 8, 12, 16, 24)
 RADIUS: Final = 8

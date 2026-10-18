@@ -9,7 +9,7 @@ description = "PC Power & Cost Meter: live PC wall power and electricity cost in
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
-dependencies = ["customtkinter>=6.0,<7", "nvidia-ml-py>=13"]
+dependencies = ["customtkinter>=6.0,<7", "nvidia-ml-py>=13", "pillow>=11"]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mypy", "pyinstaller>=6.22"]

@@ -206,7 +206,7 @@ class SettingsView(ctk.CTkFrame):
             self._save_button,
             fg_color="surface",
             hover_color="background",
-            text_color="accent_power",
+            text_color="accent",
             text_color_disabled="text_muted",
             border_color="focus",
         )

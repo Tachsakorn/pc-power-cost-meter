@@ -136,8 +136,8 @@ class Segmented[T](ctk.CTkFrame):
                 # The focus ring takes the text colour here: the usual focus colour is the fill.
                 self._painter.paint(
                     button,
-                    fg_color="accent_power",
-                    hover_color="accent_power",
+                    fg_color="accent",
+                    hover_color="accent",
                     text_color="background",
                     border_color="text",
                 )
@@ -197,7 +197,7 @@ class Dropdown[T](ctk.CTkFrame):
             self._menu,
             bg="surface",
             fg="text",
-            activebackground="accent_power",
+            activebackground="accent",
             activeforeground="background",
             selectcolor="text",
         )
