@@ -223,6 +223,9 @@ class PowerModel:
         now = self._clock()
         cpu = self._read("cpu", now)
         gpu = self._read("gpu", now)
+        # The GPU estimator reads 0 W only when no discrete adapter is present, so an
+        # integrated-only PC is judged against the CPU's power budget alone.
+        has_discrete_gpu = gpu.measured or gpu.watts > 0
         s = self._settings
 
         battery_w = self._battery_discharge_w()
@@ -255,7 +258,8 @@ class PowerModel:
             parts.append(Part("Extras", s.extra_w, False, "added in settings"))
 
         self._max_wall_w = max(self._max_wall_w, wall_w)
-        budget_w = (s.cpu_tdp_w + s.gpu_tdp_w + s.other_w) / s.psu_efficiency + s.extra_w
+        gpu_tdp_w = s.gpu_tdp_w if has_discrete_gpu else 0.0
+        budget_w = (s.cpu_tdp_w + gpu_tdp_w + s.other_w) / s.psu_efficiency + s.extra_w
         peak_w = max(self._max_wall_w, budget_w)
         return PowerSnapshot(
             wall_w=wall_w,

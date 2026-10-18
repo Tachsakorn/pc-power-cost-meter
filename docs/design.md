@@ -176,6 +176,8 @@ The desktop/laptop profile is chosen by whether Windows reports a system battery
 
 `ratio = P_wall / P_peak`, where `P_peak = max(observed max this session, (cpu_tdp + gpu_tdp + P_other) / η_psu + P_extra)`.
 
+`gpu_tdp` is left out of `P_peak` when the PC has no discrete GPU, i.e. the GPU reading is an estimate of 0 W. An integrated GPU draws from the CPU's power budget, so counting `gpu_tdp` would make a busy integrated-only laptop read as idle.
+
 | ratio | Label |
 |---|---|
 | < 0.20 | Idle |

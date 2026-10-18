@@ -264,11 +264,31 @@ def test_usage_labels() -> None:
 
 def test_peak_uses_tdp_budget_until_exceeded() -> None:
     budget = (65 + 150 + 25) / 0.87
-    assert make_model().sample().peak_w == pytest.approx(budget)
+    assert make_model(gpu=[estimate("gpu", 15)]).sample().peak_w == pytest.approx(budget)
     hot = make_model(cpu=[estimate("cpu", 300)], gpu=[estimate("gpu", 400)])
     snapshot = hot.sample()
     assert snapshot.peak_w == pytest.approx(snapshot.wall_w)
     assert snapshot.usage_label == "Gaming-level use"
+
+
+def test_budget_leaves_out_gpu_tdp_without_discrete_gpu() -> None:
+    model = make_model(cpu=[FakeSource("cpu", [measured(7)])], settings=LAPTOP)
+    snapshot = model.sample()
+    assert snapshot.wall_w == pytest.approx((7 + 10) / 0.90)
+    assert snapshot.peak_w == pytest.approx((45 + 10) / 0.90)
+    assert snapshot.usage_label != "Idle"
+
+
+def test_battery_usage_label_without_discrete_gpu() -> None:
+    battery = FakeBattery(BatteryReading(on_ac=False, rate_w=31 * 0.90))
+    snapshot = make_model(settings=LAPTOP, battery=battery).sample()
+    assert snapshot.wall_w == pytest.approx(31)
+    assert snapshot.usage_label == "Heavy use"
+
+
+def test_budget_includes_gpu_tdp_with_measured_idle_gpu() -> None:
+    model = make_model(gpu=[FakeSource("gpu", [measured(0)])])
+    assert model.sample().peak_w == pytest.approx((65 + 150 + 25) / 0.87)
 
 
 def test_all_estimated_flag() -> None:
