@@ -1,7 +1,7 @@
 import pytest
 from PIL import Image
 
-from power_meter.ui.scene.backdrop import Rect, render_backdrop
+from power_meter.ui.scene.backdrop import CLEARANCE, Rect, render_backdrop
 
 NIGHT_BG = "#1A1613"
 DAY_BG = "#F4EEE4"
@@ -40,6 +40,19 @@ def test_nothing_drawn_inside_keep_clear_rects(daylight: bool, colour: str) -> N
         for y in range(top, bottom + 1, 3):
             for x in range(left, right + 1, 3):
                 assert image.getpixel((x, y)) == base
+
+
+@pytest.mark.parametrize(("daylight", "colour"), [(False, NIGHT_BG), (True, DAY_BG)])
+def test_clearance_holds_for_rects_off_the_pixel_grid(daylight: bool, colour: str) -> None:
+    rect = (301, 47, 598, 413)
+    image = render_backdrop(SIZE, 3, [rect], daylight, colour).image
+    left, top, right, bottom = rect
+    margin = image.crop(
+        (left - CLEARANCE, top - CLEARANCE, right + CLEARANCE + 1, bottom + CLEARANCE + 1)
+    )
+    colours = margin.getcolors()
+    assert colours is not None
+    assert {pixel for _, pixel in colours} == {background(colour)}
 
 
 def test_night_has_stars() -> None:

@@ -53,7 +53,7 @@ def render_backdrop(
     base = _parse_hex(background)
     image = Image.new("RGB", native, base)
     rng = random.Random(seed)
-    blocked = _blocked_test(keep_clear, scale)
+    blocked = _blocked_test(keep_clear, scale, native)
     area_ratio = native[0] * native[1] / REFERENCE_AREA
     twinklers: tuple[tuple[int, int], ...] = ()
     if daylight:
@@ -69,8 +69,13 @@ def _parse_hex(colour: str) -> Rgb:
     return (value >> 16) & 255, (value >> 8) & 255, value & 255
 
 
-def _blocked_test(keep_clear: Sequence[Rect], scale: int) -> Blocked:
-    def blocked(x: int, y: int, margin: int) -> bool:
+def _blocked_test(keep_clear: Sequence[Rect], scale: int, size: tuple[int, int]) -> Blocked:
+    """Whether the native pixel at (x, y), drawn `scale` screen pixels wide, comes within
+    `margin` screen pixels of a keep-clear rectangle."""
+    width, height = size
+    masks: dict[int, bytearray] = {}
+
+    def near(x: int, y: int, margin: int) -> bool:
         screen_left, screen_top = x * scale, y * scale
         screen_right, screen_bottom = screen_left + scale - 1, screen_top + scale - 1
         return any(
@@ -80,6 +85,30 @@ def _blocked_test(keep_clear: Sequence[Rect], scale: int) -> Blocked:
             and screen_bottom >= top - margin
             for left, top, right, bottom in keep_clear
         )
+
+    def native_span(low: int, high: int, margin: int, limit: int) -> range:
+        first = -((scale - 1 - low + margin) // scale)
+        last = (high + margin) // scale
+        return range(max(first, 0), min(last, limit - 1) + 1)
+
+    def mask(margin: int) -> bytearray:
+        cells = bytearray(width * height)
+        for left, top, right, bottom in keep_clear:
+            columns = native_span(left, right, margin, width)
+            if not columns:
+                continue
+            for y in native_span(top, bottom, margin, height):
+                start = y * width
+                cells[start + columns.start : start + columns.stop] = b"\x01" * len(columns)
+        return cells
+
+    # Painting asks about thousands of pixels, so each margin's answers are worked out once.
+    def blocked(x: int, y: int, margin: int) -> bool:
+        if not (0 <= x < width and 0 <= y < height):
+            return near(x, y, margin)
+        if margin not in masks:
+            masks[margin] = mask(margin)
+        return masks[margin][y * width + x] == 1
 
     return blocked
 
@@ -205,6 +234,8 @@ def _paint_clouds(
         cloud_width = rng.randrange(12, 26)
         cx = rng.randrange(cloud_width, width - cloud_width)
         cy = rng.randrange(12, height - 60)
+        if blocked(cx, cy, CLEARANCE):
+            continue
         reach = cloud_width // 2 + 2
         area = [(cx + dx, cy + dy) for dx in range(-reach, reach) for dy in range(-9, 4)]
         if any(blocked(x, y, CLEARANCE) or pixels[x, y] not in (base, LIGHT_BAND) for x, y in area):
