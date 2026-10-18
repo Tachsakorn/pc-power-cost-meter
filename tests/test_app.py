@@ -110,7 +110,9 @@ def click(window: ctk.CTk, text: str) -> None:
     [button] = [
         w
         for w in descendants(window)
-        if isinstance(w, ctk.CTkButton) and w.cget("text") == text and w.winfo_ismapped()
+        if isinstance(w, ctk.CTkButton)
+        and text in (w.cget("text"), getattr(w, "tooltip", ""))
+        and w.winfo_ismapped()
     ]
     button.invoke()
     pump(window)
@@ -133,10 +135,8 @@ def test_window_smoke(tmp_path: Path) -> None:
         pytest.skip(f"Tk can't open a window here: {exc}")
     try:
         pump(app)
-        assert "฿ 1.2847" in texts(app)
-
-        click(app, "▸ Show details")
-        assert "▾ Hide details" in texts(app)
+        assert "1.2847" in texts(app)
+        assert "CPU" in texts(app)
 
         click(app, "Settings")
         assert f"Version {__version__}" in texts(app)
@@ -144,7 +144,7 @@ def test_window_smoke(tmp_path: Path) -> None:
         click(app, "Save")
         assert [s.meter_type for s in saved] == [MeterType.TOU]
         assert sampler.applied == saved
-        assert any(text.startswith("Price: TOU") for text in texts(app))
+        assert any(text.startswith("TOU · ") for text in texts(app))
 
         click(app, "Reset")
         assert sampler.resets == 0

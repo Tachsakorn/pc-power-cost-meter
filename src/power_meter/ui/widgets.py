@@ -1,7 +1,8 @@
 import tkinter
+import tkinter.font
 from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 import customtkinter as ctk
 
@@ -12,6 +13,7 @@ XS, S, M, L, XL = theme.SPACE
 FOCUS_RING_W: Final = 2
 CONTROL_H: Final = 36
 UNIT_W: Final = 64
+ICON_BUTTON: Final = 32
 
 
 class Painter:
@@ -40,15 +42,19 @@ class Painter:
 
 
 class Button(ctk.CTkButton):
-    """A CTkButton that can be reached with Tab, shows a focus ring and responds to Enter/Space."""
+    """A CTkButton that can be reached with Tab, shows a focus ring and responds to Enter/Space.
 
-    def __init__(self, master: Any, **kwargs: Any) -> None:
-        super().__init__(master, border_width=0, corner_radius=theme.RADIUS, **kwargs)
+    `outline` is the border width when unfocused. `tooltip` names a button whose text is an
+    icon glyph."""
+
+    def __init__(self, master: Any, *, outline: int = 0, tooltip: str = "", **kwargs: Any) -> None:
+        super().__init__(master, border_width=outline, corner_radius=theme.RADIUS, **kwargs)
+        self.tooltip = tooltip
         # CTkButton forwards only `cursor` to its frame. Making the frame itself focusable
         # gives one Tab stop per button instead of stops on its inner canvas and label.
         tkinter.Frame.configure(self, takefocus=1)
         tkinter.Misc.bind(self, "<FocusIn>", lambda _e: self.configure(border_width=FOCUS_RING_W))
-        tkinter.Misc.bind(self, "<FocusOut>", lambda _e: self.configure(border_width=0))
+        tkinter.Misc.bind(self, "<FocusOut>", lambda _e: self.configure(border_width=outline))
         # On release, not press: a held key auto-repeats KeyPress and would fire repeatedly.
         tkinter.Misc.bind(self, "<KeyRelease-Return>", lambda _e: self.invoke())
         tkinter.Misc.bind(self, "<KeyRelease-space>", lambda _e: self.invoke())
@@ -95,6 +101,58 @@ def ghost_button(
         border_color="focus",
     )
     return button
+
+
+def icon_button(
+    painter: Painter,
+    master: Any,
+    glyph: str,
+    command: Callable[[], None],
+    font: Any,
+    tooltip: str,
+    size: int = ICON_BUTTON,
+) -> Button:
+    button = Button(
+        master,
+        text=glyph,
+        command=command,
+        font=font,
+        width=size,
+        height=size,
+        outline=1,
+        tooltip=tooltip,
+    )
+    painter.paint(
+        button,
+        fg_color="surface",
+        hover_color="track",
+        text_color="text",
+        text_color_disabled="text_faint",
+        border_color="line",
+    )
+    tkinter.Misc.bind(
+        button, "<FocusIn>", lambda _e: painter.paint(button, border_color="focus"), add="+"
+    )
+    tkinter.Misc.bind(
+        button, "<FocusOut>", lambda _e: painter.paint(button, border_color="line"), add="+"
+    )
+    return button
+
+
+class Icons(NamedTuple):
+    family: str
+    sun: str
+    moon: str
+    settings: str
+
+
+def pick_icons(master: tkinter.Misc) -> Icons:
+    """Windows' icon font when it is installed, otherwise text symbols in the body font."""
+    installed = set(tkinter.font.families(master))
+    for family in theme.ICON_FONTS:
+        if family in installed:
+            return Icons(family, "\ue706", "\ue708", "\ue713")
+    return Icons(theme.FONT_FAMILY, "☀", "☾", "⚙")
 
 
 class Segmented[T](ctk.CTkFrame):

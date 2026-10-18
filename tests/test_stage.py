@@ -193,6 +193,17 @@ def test_twinkling_stars_keep_clear_of_widgets(window: ctk.CTk, art: SceneArt) -
         assert right < 320 or left > 740 or bottom < 40 or top > 560
 
 
+def test_placed_image_comes_back_after_its_item_is_deleted(window: ctk.CTk, art: SceneArt) -> None:
+    stage = make_stage(window, art)
+    image = Image.new("RGBA", (40, 20))
+    stage.place_image("badge", image, 400, 30)
+    stage.delete("badge")
+
+    stage.place_image("badge", image, 410, 50)
+
+    assert stage.coords("badge") == [410.0, 50.0]
+
+
 def test_daylight_theme_has_no_twinkling_stars(window: ctk.CTk, art: SceneArt) -> None:
     stage = make_stage(window, art)
 

@@ -1,12 +1,14 @@
 from dataclasses import replace
 from datetime import datetime
 
+import pytest
+
 from power_meter.meter import Totals
 from power_meter.power_model import Part, PowerSnapshot
 from power_meter.sampler import MeterState
 from power_meter.settings import MeterType, default_settings
 from power_meter.tariff import Period, RateInfo
-from power_meter.ui.main_view import build_view_model
+from power_meter.ui.main_view import DetailRow, build_view_model
 
 SETTINGS = default_settings(is_laptop=False)
 FLAT = RateInfo(rate=4.5, period=Period.FLAT, next_change=None)
@@ -47,40 +49,58 @@ def test_warming_up_shows_dash() -> None:
 
     vm = build_view_model(state, SETTINGS, FLAT)
 
-    assert vm.spent == "฿ 12.5000"
-    assert vm.spent_caption == "in 10h 0m"
-    assert vm.power == "—"
-    assert vm.per_hour == ""
-    assert vm.usage_fraction == 0.0
+    assert vm.spent == "12.5000"
+    assert vm.spent_caption == "in 10 h 0 min"
+    assert vm.watts == "—"
+    assert vm.load == ""
+    assert vm.peak == ""
     assert vm.details == ()
     assert vm.monthly == "Measuring…"
+
+
+def test_no_reading_shows_dashes() -> None:
+    state = replace(RUNNING, status="warming_up", display_w=None)
+
+    vm = build_view_model(state, SETTINGS, FLAT)
+
+    assert vm.watts == "—"
+    assert vm.per_hour == "—"
+    assert vm.gauge_fraction == 0.0
 
 
 def test_running_values() -> None:
     vm = build_view_model(RUNNING, SETTINGS, FLAT)
 
-    assert vm.spent == "฿ 1.2847"
-    assert vm.spent_caption == "in 2h 15m"
-    assert vm.power == "247 W"
-    assert vm.per_hour == "about ฿1.11 per hour"
-    assert vm.usage_label == "Gaming-level use"
-    assert vm.monthly == "≈ ฿85.65 per month"
+    assert vm.status == "Measuring"
+    assert vm.watts == "247"
+    assert vm.load == "Gaming-level use"
+    assert vm.peak == "300 W"
+    assert vm.spent == "1.2847"
+    assert vm.spent_caption == "in 2 h 15 min"
+    assert vm.per_hour == "฿1.11"
+    assert vm.monthly == "≈ ฿85.65"
     assert vm.hours_per_day == 5
-    assert vm.details == (
-        ("CPU", "50 W", "measured"),
-        ("GPU", "140 W", "measured"),
-        ("Other", "25 W", "estimated"),
-        ("PSU loss", "32 W", "87% efficiency"),
-    )
-    assert vm.price == "Price: Normal meter · ฿4.50 per unit (default)"
+    assert [(row.label, row.watts, row.detail, row.measured) for row in vm.details] == [
+        ("CPU", "50 W", "measured", True),
+        ("GPU", "140 W", "measured", True),
+        ("Other", "25 W", "estimated", False),
+        ("PSU loss", "32 W", "87% efficiency", False),
+    ]
+    assert vm.price == "Normal meter · ฿4.50 per unit (default)"
     assert vm.notice is None
+
+
+def test_spent_groups_thousands() -> None:
+    state = replace(RUNNING, totals=Totals(cost_thb=1234.56789, energy_kwh=274.0, elapsed_s=9e5))
+
+    assert build_view_model(state, SETTINGS, FLAT).spent == "1,234.5679"
 
 
 def test_per_hour_uses_smoothed_watts() -> None:
     vm = build_view_model(replace(RUNNING, display_w=200.0), SETTINGS, FLAT)
 
-    assert vm.power == "200 W"
-    assert vm.per_hour == "about ฿0.90 per hour"
+    assert vm.watts == "200"
+    assert vm.per_hour == "฿0.90"
 
 
 def test_price_and_per_hour_use_the_given_rate() -> None:
@@ -89,14 +109,14 @@ def test_price_and_per_hour_use_the_given_rate() -> None:
 
     vm = build_view_model(RUNNING, tou, peak)
 
-    assert vm.price.startswith("Price: TOU · Peak ฿6.38 now")
-    assert vm.per_hour == "about ฿1.58 per hour"
+    assert vm.price.startswith("TOU · Peak ฿6.38 now")
+    assert vm.per_hour == "฿1.58"
 
 
 def test_monthly_follows_hours_per_day() -> None:
     vm = build_view_model(RUNNING, replace(SETTINGS, hours_per_day=24), FLAT)
 
-    assert vm.monthly == "≈ ฿411 per month"
+    assert vm.monthly == "≈ ฿411"
     assert vm.hours_per_day == 24
 
 
@@ -107,13 +127,50 @@ def test_monthly_measuring() -> None:
     assert build_view_model(state, SETTINGS, FLAT).monthly == "Measuring…"
 
 
+def test_detail_share_is_relative_to_the_largest_part() -> None:
+    snapshot = replace(
+        SNAPSHOT,
+        parts=(Part("CPU", 54.0, True, "measured"), Part("GPU", 107.0, True, "measured")),
+    )
+
+    vm = build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT)
+
+    assert [row.share for row in vm.details] == [pytest.approx(0.505, abs=1e-3), 1.0]
+
+
+def test_detail_share_is_zero_when_every_part_is_zero() -> None:
+    snapshot = replace(SNAPSHOT, parts=(Part("CPU", 0.0, True, "measured"),))
+
+    vm = build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT)
+
+    assert vm.details == (DetailRow("CPU", "0 W", "measured", True, 0.0),)
+
+
+def test_gauge_fraction_is_clamped() -> None:
+    def fraction(wall_w: float, peak_w: float) -> float:
+        snapshot = replace(SNAPSHOT, wall_w=wall_w, peak_w=peak_w)
+        return build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT).gauge_fraction
+
+    assert fraction(150.0, 300.0) == 0.5
+    assert fraction(400.0, 300.0) == 1.0
+    assert fraction(-5.0, 300.0) == 0.0
+    assert fraction(100.0, 0.0) == 0.0
+
+
+def test_no_peak_label_without_a_peak() -> None:
+    state = replace(RUNNING, snapshot=replace(SNAPSHOT, peak_w=0.0))
+
+    assert build_view_model(state, SETTINGS, FLAT).peak == ""
+
+
 def test_restarting_notice() -> None:
     state = replace(RUNNING, status="restarting")
 
     vm = build_view_model(state, SETTINGS, FLAT)
 
     assert vm.notice == "Measurement paused — restarting"
-    assert vm.power == "247 W"
+    assert vm.status == "Measurement paused — restarting"
+    assert vm.watts == "247"
 
 
 def test_restarting_takes_priority_over_estimates() -> None:
@@ -133,6 +190,7 @@ def test_cannot_save_notice() -> None:
     vm = build_view_model(RUNNING, SETTINGS, FLAT, can_save=False)
 
     assert vm.notice == "Settings can't be saved on this PC"
+    assert vm.status == "Settings can't be saved on this PC"
 
 
 def test_cannot_save_takes_priority_over_estimates() -> None:
@@ -160,14 +218,3 @@ def test_no_estimates_notice_on_battery() -> None:
     )
 
     assert build_view_model(replace(RUNNING, snapshot=battery), SETTINGS, FLAT).notice is None
-
-
-def test_usage_fraction_clamped() -> None:
-    def fraction(wall_w: float, peak_w: float) -> float:
-        snapshot = replace(SNAPSHOT, wall_w=wall_w, peak_w=peak_w)
-        return build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT).usage_fraction
-
-    assert fraction(150.0, 300.0) == 0.5
-    assert fraction(400.0, 300.0) == 1.0
-    assert fraction(-5.0, 300.0) == 0.0
-    assert fraction(100.0, 0.0) == 0.0

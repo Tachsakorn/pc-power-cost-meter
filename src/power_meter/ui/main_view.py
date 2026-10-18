@@ -1,7 +1,8 @@
 import time
+import tkinter
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 import customtkinter as ctk
 
@@ -10,13 +11,25 @@ from power_meter.sampler import MeterState
 from power_meter.settings import FIELD_RANGES, Settings
 from power_meter.tariff import RateInfo
 from power_meter.ui import theme
-from power_meter.ui.format import baht, baht_short, duration, price_line, watts
+from power_meter.ui.format import amount, baht_short, duration, price_line, watts
+from power_meter.ui.gauge import TICKS, render_gauge
+from power_meter.ui.stage import Stage
 from power_meter.ui.theme import Palette
-from power_meter.ui.widgets import Button, Painter, ghost_button, label, row, set_text
+from power_meter.ui.widgets import (
+    Button,
+    Painter,
+    ghost_button,
+    icon_button,
+    label,
+    pick_icons,
+    row,
+    set_text,
+)
 
 RESET_CONFIRM_MS: Final = 3000
 RESET_MIN_GAP_S: Final = 0.4
 NO_VALUE: Final = "—"
+MEASURING: Final = "Measuring"
 RESTARTING: Final = "Measurement paused — restarting"
 CANNOT_SAVE: Final = "Settings can't be saved on this PC"
 ESTIMATES_ONLY: Final = "Estimates only on this PC"
@@ -24,18 +37,29 @@ HOURS_MIN, HOURS_MAX = (int(limit) for limit in FIELD_RANGES["hours_per_day"])
 
 
 @dataclass(frozen=True)
+class DetailRow:
+    label: str
+    watts: str
+    detail: str
+    measured: bool
+    share: float
+
+
+@dataclass(frozen=True)
 class MainViewModel:
     """Everything the main view shows, already formatted."""
 
+    status: str
+    watts: str
+    load: str
+    gauge_fraction: float
+    peak: str
     spent: str
     spent_caption: str
-    power: str
     per_hour: str
-    usage_label: str
-    usage_fraction: float
     monthly: str
     hours_per_day: int
-    details: tuple[tuple[str, str, str], ...]
+    details: tuple[DetailRow, ...]
     price: str
     notice: str | None
 
@@ -46,13 +70,24 @@ def build_view_model(
     """`rate` is the price in effect now under `settings`, so the price line always matches them."""
     snap, display_w = state.snapshot, state.display_w
     if state.status != "warming_up" and snap is not None and display_w is not None:
-        power = watts(display_w)
-        per_hour = f"about {baht_short(display_w * rate.rate / 1000)} per hour"
-        usage_label = snap.usage_label
-        usage_fraction = min(max(snap.wall_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
-        details = tuple((p.label, watts(p.watts), p.detail) for p in snap.parts)
+        power = f"{display_w:.0f}"
+        per_hour = baht_short(display_w * rate.rate / 1000)
+        load = snap.usage_label
+        fraction = min(max(snap.wall_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
+        peak = watts(snap.peak_w) if snap.peak_w > 0 else ""
+        largest = max((part.watts for part in snap.parts), default=0.0)
+        details = tuple(
+            DetailRow(
+                part.label,
+                watts(part.watts),
+                part.detail,
+                part.measured,
+                part.watts / largest if largest > 0 else 0.0,
+            )
+            for part in snap.parts
+        )
     else:
-        power, per_hour, usage_label, usage_fraction, details = NO_VALUE, "", "", 0.0, ()
+        power, per_hour, load, fraction, peak, details = NO_VALUE, NO_VALUE, "", 0.0, "", ()
 
     projected = monthly_cost(state.session, settings.hours_per_day)
 
@@ -66,27 +101,61 @@ def build_view_model(
         notice = ESTIMATES_ONLY
 
     return MainViewModel(
-        spent=baht(state.totals.cost_thb),
+        status=notice or MEASURING,
+        watts=power,
+        load=load,
+        gauge_fraction=fraction,
+        peak=peak,
+        spent=amount(state.totals.cost_thb),
         spent_caption=f"in {duration(state.totals.elapsed_s)}",
-        power=power,
         per_hour=per_hour,
-        usage_label=usage_label,
-        usage_fraction=usage_fraction,
-        monthly="Measuring…" if projected is None else f"≈ {baht_short(projected)} per month",
+        monthly="Measuring…" if projected is None else f"≈ {baht_short(projected)}",
         hours_per_day=settings.hours_per_day,
         details=details,
-        price=f"Price: {price_line(settings, rate)}",
+        price=price_line(settings, rate),
         notice=notice,
     )
 
 
 XS, S, M, L, XL = theme.SPACE
+PAD: Final = (20, 24)
+GAUGE_TAG: Final = "gauge"
+GAUGE_W, GAUGE_H = 320, 160
+GAUGE_ROW_H: Final = 178
+# Where the readout and the scale labels sit inside the gauge row, matched to the arc that
+# render_gauge draws: centre 128 px down, ends 116 px either side of it.
+WATTS_TOP: Final = 46
+LOAD_TOP: Final = 116
+ARC_ENDS_X: Final = (44, 268)
+SIZE_CURRENCY: Final = 22
+SIZE_UNIT: Final = 18
+STEPPER_BUTTON: Final = 24
+BAR_H: Final = 3
+HAIR_SPACE: Final = "\u200a"
+
+STATUS_ROW, GAUGE_ROW, DETAILS_ROW = 0, 1, 8
 
 
-class MainView(ctk.CTkFrame):
+def spaced(caption: str) -> str:
+    """Letter-spacing for small uppercase captions, which Tk fonts can't do themselves."""
+    return HAIR_SPACE.join(caption)
+
+
+class DetailCells(NamedTuple):
+    name: Any
+    track: tkinter.Frame
+    fill: tkinter.Frame
+    watts: Any
+    dot: Any
+    detail: Any
+
+
+class MainView:
+    """The dashboard, gridded into column 1 of the stage next to the scene."""
+
     def __init__(
         self,
-        master: Any,
+        stage: Stage,
         palette: Palette,
         on_open_settings: Callable[[], None],
         on_reset: Callable[[], None],
@@ -94,7 +163,8 @@ class MainView(ctk.CTkFrame):
         on_hours_change: Callable[[int], None],
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        super().__init__(master, corner_radius=0)
+        self._stage = stage
+        self._k: float = ctk.ScalingTracker.get_widget_scaling(stage)
         self._clock = clock
         self._painter = Painter(palette)
         self._on_reset = on_reset
@@ -102,163 +172,241 @@ class MainView(ctk.CTkFrame):
         self._hours = 0
         self._reset_job: str | None = None
         self._reset_armed_at = 0.0
-        self._detail_cells: list[tuple[Any, Any, Any]] = []
+        self._detail_cells: list[DetailCells] = []
+        self._parts: list[Any] = []
+        self._visible = True
+        self._fraction = 0.0
+        self._gauge_key: tuple[int, Palette] | None = None
+        self._gauge_at: tuple[int, int] | None = None
+        self._icons = pick_icons(stage)
 
-        self._font_cost = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_COST, "bold")
-        self._font_power = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_POWER, "bold")
-        self._font_body = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY)
-        self._font_strong = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY, "bold")
-        self._font_caption = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_CAPTION)
+        family, light = theme.FONT_FAMILY, theme.FONT_LIGHT
+        self._font_power = ctk.CTkFont(light, theme.SIZE_POWER)
+        self._font_unit = ctk.CTkFont(family, SIZE_UNIT)
+        self._font_cost = ctk.CTkFont(light, theme.SIZE_COST)
+        self._font_currency = ctk.CTkFont(family, SIZE_CURRENCY)
+        self._font_value = ctk.CTkFont(family, theme.SIZE_VALUE)
+        self._font_body = ctk.CTkFont(family, theme.SIZE_BODY)
+        self._font_caption = ctk.CTkFont(family, theme.SIZE_CAPTION)
+        self._font_icon = ctk.CTkFont(self._icons.family, theme.SIZE_BODY + 2)
 
-        self._painter.paint(self, fg_color="background")
-        self.grid_columnconfigure(0, weight=1)
+        stage.grid_columnconfigure(0, minsize=stage.scene_column_px)
+        stage.grid_columnconfigure(1, weight=1)
+        stage.grid_rowconfigure(GAUGE_ROW, minsize=self._px(GAUGE_ROW_H))
+        stage.grid_rowconfigure(DETAILS_ROW, weight=1)
 
-        # Ghost buttons pad their text by about S, so rows that end in one are inset by S
-        # less on that side to keep the text on the same edge as everything else.
-        header = row(self)
-        header.grid(row=0, column=0, sticky="ew", padx=(XL, XL - S), pady=(L, 0))
-        header.grid_columnconfigure(0, weight=1)
-        label(self._painter, header, "Power & Cost Meter", self._font_strong, "text").grid(
-            row=0, column=0, sticky="w"
+        status = self._row_frame(STATUS_ROW, pady=(L, S))
+        status.grid_columnconfigure(1, weight=1)
+        label(self._painter, status, "●", self._font_caption, "accent").grid(row=0, column=0)
+        self._status = label(self._painter, status, "", self._font_body, "text_muted")
+        self._status.grid(row=0, column=1, sticky="w", padx=(S, 0))
+        self._theme_button = icon_button(
+            self._painter, status, "", on_toggle_theme, self._font_icon, ""
         )
-        self._theme_button = ghost_button(
-            self._painter, header, "", on_toggle_theme, self._font_body
+        self._theme_button.grid(row=0, column=2)
+        icon_button(
+            self._painter,
+            status,
+            self._icons.settings,
+            on_open_settings,
+            self._font_icon,
+            "Settings",
+        ).grid(row=0, column=3, padx=(S, 0))
+
+        readout = self._row_frame(GAUGE_ROW, sticky="n", pady=(WATTS_TOP, 0))
+        self._watts = label(self._painter, readout, "", self._font_power, "text")
+        self._watts.grid(row=0, column=0, sticky="sw")
+        label(self._painter, readout, "W", self._font_unit, "text_muted").grid(
+            row=0,
+            column=1,
+            sticky="sw",
+            padx=(XS, 0),
+            pady=(0, self._baseline(self._font_power, self._font_unit)),
         )
-        self._theme_button.grid(row=0, column=1)
-        ghost_button(self._painter, header, "Settings", on_open_settings, self._font_body).grid(
-            row=0, column=2
+        self._load = self._on_stage(
+            label(self._painter, stage, "", self._font_body, "text_muted"),
+            GAUGE_ROW,
+            sticky="n",
+            pady=(LOAD_TOP, 0),
+        )
+        ends = self._row_frame(
+            GAUGE_ROW, sticky="s", width=GAUGE_W, height=theme.SIZE_CAPTION + XS + 2
+        )
+        self._zero = label(self._painter, ends, "", self._font_caption, "text_muted")
+        self._zero.place(x=ARC_ENDS_X[0], rely=1.0, anchor="s")
+        self._peak = label(self._painter, ends, "", self._font_caption, "text_muted")
+        self._peak.place(x=ARC_ENDS_X[1], rely=1.0, anchor="sw")
+
+        self._on_stage(self._caption(stage, "SPENT"), 2, sticky="w", pady=(M, 0))
+        cost = self._row_frame(3)
+        cost.grid_columnconfigure(2, weight=1)
+        currency_drop = self._baseline(self._font_cost, self._font_currency)
+        label(self._painter, cost, "฿", self._font_currency, "text_muted").grid(
+            row=0, column=0, sticky="sw", pady=(0, currency_drop)
+        )
+        self._spent = label(self._painter, cost, "", self._font_cost, "text")
+        self._spent.grid(row=0, column=1, sticky="sw", padx=(S, 0))
+        self._spent_caption = label(self._painter, cost, "", self._font_body, "text_muted")
+        self._spent_caption.grid(
+            row=0, column=3, sticky="se", pady=(0, self._baseline(self._font_cost, self._font_body))
         )
 
-        self._caption(self, "You've spent").grid(row=1, column=0, sticky="w", padx=XL, pady=(L, 0))
-        self._spent = label(self._painter, self, "", self._font_cost, "text")
-        self._spent.grid(row=2, column=0, sticky="w", padx=XL)
-        self._spent_caption = self._caption(self, "")
-        self._spent_caption.grid(row=3, column=0, sticky="w", padx=XL)
-
-        now_head = row(self)
-        now_head.grid(row=4, column=0, sticky="ew", padx=XL, pady=(L, 0))
-        now_head.grid_columnconfigure(0, weight=1)
-        self._caption(now_head, "Right now").grid(row=0, column=0, sticky="w")
-        self._notice = label(self._painter, now_head, "", self._font_caption, "text_muted")
-        self._notice.grid(row=0, column=1, sticky="e")
-        self._notice.grid_remove()
-
-        now_row = row(self)
-        now_row.grid(row=5, column=0, sticky="ew", padx=XL)
-        self._power = label(self._painter, now_row, "", self._font_power, "accent")
-        self._power.grid(row=0, column=0, sticky="sw")
-        self._per_hour = label(self._painter, now_row, "", self._font_body, "text")
-        baseline = self._font_power.metrics("descent") - self._font_body.metrics("descent")
-        self._per_hour.grid(row=0, column=1, sticky="sw", padx=(M, 0), pady=(0, baseline))
-
-        usage_row = row(self)
-        usage_row.grid(row=6, column=0, sticky="ew", padx=XL, pady=(XS, 0))
-        self._usage_bar = ctk.CTkProgressBar(
-            usage_row, width=160, height=S, corner_radius=theme.RADIUS
-        )
-        self._painter.paint(self._usage_bar, fg_color="surface", progress_color="accent")
-        self._usage_bar.set(0)
-        self._usage_bar.grid(row=0, column=0)
-        self._usage = label(self._painter, usage_row, "", self._font_body, "text_muted")
-        self._usage.grid(row=0, column=1, sticky="w", padx=(M, 0))
-
-        hours_row = row(self)
-        hours_row.grid(row=7, column=0, sticky="ew", padx=XL, pady=(L, 0))
-        self._caption(hours_row, "If you use your PC like this").grid(row=0, column=0)
-        stepper = ctk.CTkFrame(hours_row, corner_radius=theme.RADIUS)
-        self._painter.paint(stepper, fg_color="surface")
-        stepper.grid(row=0, column=1, padx=S)
-        self._hours_down = self._stepper_button(stepper, "−", -1)
+        self._rule(4, L)
+        stats = self._row_frame(5, pady=(L, 0))
+        for column in (0, 2, 4):
+            stats.grid_columnconfigure(column, weight=1, uniform="stat")
+        for column in (1, 3):
+            line = tkinter.Frame(stats, width=1, bd=0, highlightthickness=0)
+            self._painter.paint(line, bg="line")
+            line.grid(row=0, column=column, sticky="ns")
+        self._per_hour = self._stat(stats, 0, "PER HOUR")
+        self._monthly = self._stat(stats, 2, "PER MONTH")
+        hours = self._stat_cell(stats, 4, "HOURS A DAY")
+        stepper = row(hours)
+        stepper.grid(row=1, column=0, sticky="w", pady=(XS, 0))
+        self._hours_down = self._stepper_button(stepper, "−", -1, "Fewer hours a day")
         self._hours_down.grid(row=0, column=0)
         self._hours_value = ctk.CTkLabel(
-            stepper, text="", font=self._font_strong, width=24, height=0
+            stepper, text="", font=self._font_value, width=28, height=0
         )
         self._painter.paint(self._hours_value, text_color="text")
         self._hours_value.grid(row=0, column=1)
-        self._hours_up = self._stepper_button(stepper, "+", 1)
+        self._hours_up = self._stepper_button(stepper, "+", 1, "More hours a day")
         self._hours_up.grid(row=0, column=2)
-        self._caption(hours_row, "hours a day").grid(row=0, column=2)
-        self._monthly = label(self._painter, self, "", self._font_strong, "text")
-        self._monthly.grid(row=8, column=0, sticky="w", padx=XL, pady=(XS, 0))
 
-        self._details_toggle = ghost_button(
-            self._painter, self, "▸ Show details", self._toggle_details, self._font_body
-        )
-        self._details_toggle.grid(row=9, column=0, sticky="w", padx=XL - S, pady=(M, 0))
-        self._details = ctk.CTkFrame(self, corner_radius=theme.RADIUS)
-        self._painter.paint(self._details, fg_color="surface")
-        self._details.grid_columnconfigure(2, weight=1)
-        self._details.grid(row=10, column=0, sticky="ew", padx=XL, pady=(XS, 0))
-        self._details.grid_remove()
+        self._rule(6, L)
+        self._on_stage(self._caption(stage, "BREAKDOWN"), 7, sticky="w", pady=(L, 0))
+        self._details = self._row_frame(DETAILS_ROW, sticky="new", pady=(S, 0))
+        self._details.grid_columnconfigure(1, weight=1)
 
-        # The price line and Reset sit at the bottom of the window; spare height goes above them.
-        self.grid_rowconfigure(11, weight=1)
-        price_row = row(self)
-        price_row.grid(row=11, column=0, sticky="sew", padx=XL, pady=(M, 0))
-        self._price = label(self._painter, price_row, "", self._font_caption, "text_muted")
+        self._rule(9, M)
+        # Ghost buttons pad their text by about S, so the footer is inset by S less on the right
+        # to keep Reset's text on the same edge as everything else.
+        footer = self._row_frame(10, padx=(PAD[0], PAD[1] - S), pady=(S, L))
+        footer.grid_columnconfigure(2, weight=1)
+        self._price = label(self._painter, footer, "", self._font_caption, "text_muted")
         self._price.grid(row=0, column=0, sticky="w")
-        change = ghost_button(
-            self._painter, price_row, "Change", on_open_settings, self._font_body, "accent"
-        )
-        change.grid(row=0, column=1, padx=(XS, 0))
+        ghost_button(
+            self._painter, footer, "Change", on_open_settings, self._font_body, "accent"
+        ).grid(row=0, column=1, padx=(XS, 0))
         self._reset_button = ghost_button(
-            self._painter, self, "Reset", self._reset_clicked, self._font_body
+            self._painter, footer, "Reset", self._reset_clicked, self._font_body
         )
-        self._reset_button.grid(row=12, column=0, sticky="e", padx=XL - S, pady=(0, L))
+        self._reset_button.grid(row=0, column=3)
 
+        self._configure_binding = stage.bind("<Configure>", self._stage_resized, add="+")
         self.apply_palette(palette)
 
     def render(self, vm: MainViewModel) -> None:
+        set_text(self._status, vm.status)
+        set_text(self._watts, vm.watts)
+        set_text(self._load, vm.load)
+        set_text(self._zero, "0" if vm.peak else "")
+        set_text(self._peak, vm.peak)
+        self._show_gauge(vm.gauge_fraction)
         set_text(self._spent, vm.spent)
         set_text(self._spent_caption, vm.spent_caption)
-        set_text(self._power, vm.power)
         set_text(self._per_hour, vm.per_hour)
-        set_text(self._usage, vm.usage_label)
-        if self._usage_bar.get() != vm.usage_fraction:
-            self._usage_bar.set(vm.usage_fraction)
         set_text(self._monthly, vm.monthly)
         if vm.hours_per_day != self._hours:
             self._show_hours(vm.hours_per_day)
         self._render_details(vm.details)
         set_text(self._price, vm.price)
-        if vm.notice is None:
-            self._notice.grid_remove()
-        else:
-            set_text(self._notice, vm.notice)
-            if not self._notice.winfo_manager():
-                self._notice.grid()
 
     def apply_palette(self, palette: Palette) -> None:
         self._painter.apply_palette(palette)
-        set_text(self._theme_button, "Light mode" if palette == theme.DARK else "Dark mode")
+        dark = palette == theme.DARK
+        set_text(self._theme_button, self._icons.sun if dark else self._icons.moon)
+        self._theme_button.tooltip = "Switch to light mode" if dark else "Switch to dark mode"
+        self._show_gauge(self._fraction)
+
+    def hide(self) -> None:
+        self._visible = False
+        for part in self._parts:
+            part.grid_remove()
+        self._stage.delete(GAUGE_TAG)
+        self._gauge_key = self._gauge_at = None
+
+    def show(self) -> None:
+        self._visible = True
+        for part in self._parts:
+            part.grid()
+        self._show_gauge(self._fraction)
 
     def destroy(self) -> None:
+        self._visible = False
         if self._reset_job is not None:
-            self.after_cancel(self._reset_job)
+            self._stage.after_cancel(self._reset_job)
             self._reset_job = None
-        super().destroy()
+        self._stage.unbind("<Configure>", self._configure_binding)
+        self._stage.delete(GAUGE_TAG)
+        for part in self._parts:
+            part.destroy()
+        self._parts.clear()
+
+    def _px(self, logical: float) -> int:
+        return round(logical * self._k)
+
+    def _baseline(self, large: ctk.CTkFont, small: ctk.CTkFont) -> int:
+        """Bottom padding that puts `small` text on the same baseline as `large` beside it."""
+        drop: int = large.metrics("descent") - small.metrics("descent")
+        return round(drop / self._k)
+
+    def _on_stage(self, widget: Any, grid_row: int, **grid: Any) -> Any:
+        grid.setdefault("padx", PAD)
+        widget.grid(row=grid_row, column=1, **grid)
+        if isinstance(widget, ctk.CTkBaseClass):
+            self._painter.paint(widget, bg_color="background")
+        self._parts.append(widget)
+        return widget
+
+    def _row_frame(
+        self, grid_row: int, *, sticky: str = "ew", width: int = 0, height: int = 0, **grid: Any
+    ) -> Any:
+        frame = ctk.CTkFrame(
+            self._stage, corner_radius=0, border_width=0, width=width, height=height
+        )
+        self._painter.paint(frame, fg_color="background")
+        return self._on_stage(frame, grid_row, sticky=sticky, **grid)
+
+    def _rule(self, grid_row: int, space_above: int) -> None:
+        line = tkinter.Frame(self._stage, height=1, bd=0, highlightthickness=0)
+        self._painter.paint(line, bg="line")
+        # A plain Tk frame: customtkinter doesn't scale its padding.
+        self._on_stage(
+            line,
+            grid_row,
+            sticky="ew",
+            padx=tuple(self._px(pad) for pad in PAD),
+            pady=(self._px(space_above), 0),
+        )
 
     def _caption(self, master: Any, text: str) -> Any:
-        return label(self._painter, master, text, self._font_body, "text_muted")
+        return label(self._painter, master, spaced(text), self._font_caption, "text_muted")
 
-    def _stepper_button(self, master: Any, text: str, step: int) -> Button:
-        button = Button(
+    def _stat_cell(self, master: Any, column: int, caption: str) -> Any:
+        cell = row(master)
+        cell.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else M, M))
+        self._caption(cell, caption).grid(row=0, column=0, sticky="w")
+        return cell
+
+    def _stat(self, master: Any, column: int, caption: str) -> Any:
+        value = label(
+            self._painter, self._stat_cell(master, column, caption), "", self._font_value, "text"
+        )
+        value.grid(row=1, column=0, sticky="w", pady=(XS, 0))
+        return value
+
+    def _stepper_button(self, master: Any, text: str, step: int, tooltip: str) -> Button:
+        return icon_button(
+            self._painter,
             master,
-            text=text,
-            command=lambda: self._step_hours(step),
-            font=self._font_strong,
-            width=28,
-            height=28,
+            text,
+            lambda: self._step_hours(step),
+            self._font_body,
+            tooltip,
+            size=STEPPER_BUTTON,
         )
-        self._painter.paint(
-            button,
-            fg_color="surface",
-            hover_color="background",
-            text_color="text",
-            text_color_disabled="text_muted",
-            border_color="focus",
-        )
-        return button
 
     def _step_hours(self, step: int) -> None:
         hours = min(max(self._hours + step, HOURS_MIN), HOURS_MAX)
@@ -272,49 +420,93 @@ class MainView(ctk.CTkFrame):
         self._hours_down.configure(state="normal" if hours > HOURS_MIN else "disabled")
         self._hours_up.configure(state="normal" if hours < HOURS_MAX else "disabled")
 
-    def _toggle_details(self) -> None:
-        if self._details.winfo_manager():
-            self._details.grid_remove()
-            set_text(self._details_toggle, "▸ Show details")
-        else:
-            self._details.grid()
-            set_text(self._details_toggle, "▾ Hide details")
+    def _show_gauge(self, fraction: float) -> None:
+        self._fraction = fraction
+        if not self._visible:
+            return
+        lit = round(fraction * (TICKS - 1))
+        palette = self._painter.palette
+        if (lit, palette) == self._gauge_key:
+            return
+        self._stage.update_idletasks()
+        cell = self._stage.grid_bbox(1, GAUGE_ROW)
+        if cell is None:
+            return
+        self._gauge_key = (lit, palette)
+        image = render_gauge(
+            lit / (TICKS - 1), palette.accent, palette.track, self._px(GAUGE_W), self._px(GAUGE_H)
+        )
+        x, y, width, _ = cell
+        left, right = (self._px(pad) for pad in PAD)
+        at = (x + left + (width - left - right - image.width) // 2, y)
+        self._stage.place_image(GAUGE_TAG, image, *at)
+        if at != self._gauge_at:
+            self._gauge_at = at
+            self._stage.refresh_backdrop()
 
-    def _render_details(self, rows: tuple[tuple[str, str, str], ...]) -> None:
-        if [texts[0] for texts in rows] != [cells[0].cget("text") for cells in self._detail_cells]:
-            self._rebuild_detail_rows(len(rows))
-        for cells, texts in zip(self._detail_cells, rows, strict=True):
-            for cell, text in zip(cells, texts, strict=True):
-                set_text(cell, text)
+    def _stage_resized(self, _event: "tkinter.Event[tkinter.Misc]") -> None:
+        self._gauge_key = None
+        self._stage.after_idle(lambda: self._show_gauge(self._fraction))
 
-    def _rebuild_detail_rows(self, count: int) -> None:
+    def _render_details(self, rows: tuple[DetailRow, ...]) -> None:
+        if [r.label for r in rows] != [cells.name.cget("text") for cells in self._detail_cells]:
+            self._rebuild_detail_rows([r.label for r in rows])
+        for cells, detail in zip(self._detail_cells, rows, strict=True):
+            set_text(cells.watts, detail.watts)
+            set_text(cells.detail, detail.detail)
+            dot = "●" if detail.measured else "○"
+            if cells.dot.cget("text") != dot:
+                cells.dot.configure(text=dot)
+                self._painter.paint(
+                    cells.dot, text_color="accent" if detail.measured else "text_faint"
+                )
+            if float(cells.fill.place_info().get("relwidth", -1)) != detail.share:
+                cells.fill.place(relx=0, rely=0, relheight=1, relwidth=detail.share)
+
+    def _rebuild_detail_rows(self, names: list[str]) -> None:
         for cells in self._detail_cells:
-            for cell in cells:
-                self._painter.forget(cell)
-                cell.destroy()
+            for widget in cells:
+                self._painter.forget(widget)
+            # The fill goes with its track.
+            for widget in (cells.name, cells.track, cells.watts, cells.dot, cells.detail):
+                widget.destroy()
         self._detail_cells = []
-        last = count - 1
-        for i in range(count):
-            pady = (M if i == 0 else XS, M if i == last else 0)
-            name = label(self._painter, self._details, "", self._font_body, "text")
-            name.grid(row=i, column=0, sticky="w", padx=(M, L), pady=pady)
+        bar_h = self._px(BAR_H)
+        for i, name in enumerate(names):
+            gap = 0 if i == 0 else S
+            pady = (gap, 0)
+            name_label = label(self._painter, self._details, name, self._font_body, "text")
+            name_label.grid(row=i, column=0, sticky="w", pady=pady)
+            track = tkinter.Frame(self._details, height=bar_h, bd=0, highlightthickness=0)
+            self._painter.paint(track, bg="track")
+            track.grid(
+                row=i,
+                column=1,
+                sticky="ew",
+                padx=(self._px(L), self._px(L)),
+                pady=(self._px(gap), 0),
+            )
+            fill = tkinter.Frame(track, bd=0, highlightthickness=0)
+            self._painter.paint(fill, bg="text_muted")
             power = label(self._painter, self._details, "", self._font_body, "text")
-            power.grid(row=i, column=1, sticky="e", pady=pady)
+            power.grid(row=i, column=2, sticky="e", pady=pady)
+            dot = label(self._painter, self._details, "", self._font_caption, "text_faint")
+            dot.grid(row=i, column=3, padx=(M, XS), pady=pady)
             detail = label(self._painter, self._details, "", self._font_caption, "text_muted")
-            detail.grid(row=i, column=2, sticky="w", padx=(L, M), pady=pady)
-            self._detail_cells.append((name, power, detail))
+            detail.grid(row=i, column=4, sticky="w", pady=pady)
+            self._detail_cells.append(DetailCells(name_label, track, fill, power, dot, detail))
 
     def _reset_clicked(self) -> None:
         if self._reset_job is None:
             set_text(self._reset_button, "Click again to reset")
             self._painter.paint(self._reset_button, text_color="error")
             self._reset_armed_at = self._clock()
-            self._reset_job = self.after(RESET_CONFIRM_MS, self._end_reset_confirm)
+            self._reset_job = self._stage.after(RESET_CONFIRM_MS, self._end_reset_confirm)
             return
         # A double-click or key repeat is not a deliberate second click.
         if self._clock() - self._reset_armed_at < RESET_MIN_GAP_S:
             return
-        self.after_cancel(self._reset_job)
+        self._stage.after_cancel(self._reset_job)
         self._end_reset_confirm()
         self._on_reset()
 

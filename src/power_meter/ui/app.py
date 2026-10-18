@@ -18,7 +18,9 @@ from power_meter.settings import Settings
 from power_meter.tariff import HolidayCalendar, tariff_from_settings
 from power_meter.ui import theme
 from power_meter.ui.main_view import MainView, build_view_model
+from power_meter.ui.scene.art import SceneArt
 from power_meter.ui.settings_view import SettingsView
+from power_meter.ui.stage import Stage
 from power_meter.ui.theme import Palette
 from power_meter.ui.widgets import CONTROL_H, Button, Painter, label
 
@@ -92,15 +94,17 @@ class App(ctk.CTk):
 
         palette = palette_for(settings.theme)
         self.configure(fg_color=palette.background)
+        self._stage = Stage(self, palette, settings.theme == "light", SceneArt.bundled())
+        self._stage.pack(fill="both", expand=True)
         self._main_view = MainView(
-            self,
+            self._stage,
             palette,
             on_open_settings=self._open_settings,
             on_reset=sampler.request_reset,
             on_toggle_theme=self._toggle_theme,
             on_hours_change=self._hours_changed,
         )
-        self._main_view.pack(fill="both", expand=True)
+        self._stage.start()
         self._poll_job = self.after_idle(self._poll)
 
     def report_callback_exception(
@@ -134,6 +138,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode(name)
         palette = palette_for(name)
         self.configure(fg_color=palette.background)
+        self._stage.set_theme(palette, name == "light")
         self._main_view.apply_palette(palette)
         if self._settings_view is not None:
             self._settings_view.apply_palette(palette)
@@ -159,7 +164,8 @@ class App(ctk.CTk):
             on_cancel=self._close_settings,
             on_theme_change=self._apply_theme,
         )
-        self._main_view.pack_forget()
+        self._main_view.hide()
+        self._stage.pack_forget()
         self._settings_view.pack(fill="both", expand=True)
         # Focus the view itself so the next Tab lands on its first control.
         self._settings_view.focus_set()
@@ -169,8 +175,9 @@ class App(ctk.CTk):
             return
         self._settings_view.destroy()
         self._settings_view = None
-        self._main_view.pack(fill="both", expand=True)
-        self._main_view.focus_set()
+        self._stage.pack(fill="both", expand=True)
+        self._main_view.show()
+        self._stage.focus_set()
 
     def _settings_saved(self, settings: Settings) -> None:
         # Leaving the view first means a held Enter can't save the form again.

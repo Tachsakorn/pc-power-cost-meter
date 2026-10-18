@@ -6,8 +6,8 @@ from power_meter.tariff import Period, RateInfo
 SHORT_FORM_FROM = 100
 
 
-def baht(value: float, decimals: int = 4) -> str:
-    return f"฿ {value:,.{decimals}f}"
+def amount(value: float) -> str:
+    return f"{value:,.4f}"
 
 
 def baht_short(value: float) -> str:
@@ -17,9 +17,9 @@ def baht_short(value: float) -> str:
 def duration(seconds: float) -> str:
     minutes = int(seconds // 60)
     if minutes < 1:
-        return "under 1m"
+        return "under 1 min"
     hours, minutes = divmod(minutes, 60)
-    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+    return f"{hours} h {minutes} min" if hours else f"{minutes} min"
 
 
 def watts(value: float) -> str:

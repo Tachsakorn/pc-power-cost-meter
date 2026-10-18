@@ -105,13 +105,14 @@ class Stage(tkinter.Canvas):
 
     def place_image(self, tag: str, image: Image.Image, x: int, y: int) -> None:
         photo = self._placed.get(tag)
-        if photo is not None and (photo.width(), photo.height()) == image.size:
+        exists = bool(self.find_withtag(tag))
+        if exists and photo is not None and (photo.width(), photo.height()) == image.size:
             photo.paste(image)
             self.coords(tag, x, y)
             return
         photo = ImageTk.PhotoImage(image)
         self._placed[tag] = photo
-        if self.find_withtag(tag):
+        if exists:
             self.itemconfigure(tag, image=photo)
             self.coords(tag, x, y)
         else:
