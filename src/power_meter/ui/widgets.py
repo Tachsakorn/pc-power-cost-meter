@@ -180,11 +180,11 @@ class Checkbox(ctk.CTkFrame):
         painter.paint(
             self._box,
             fg_color="accent",
-            hover_color="accent",
-            border_color="line",
+            border_color="text_muted",
             checkmark_color="background",
             text_color="text",
         )
+        self._paint_hover()
         painter.paint(self, border_color="background")
         self._box.grid(row=0, column=0, padx=S - FOCUS_RING_W, pady=XS)
         tkinter.Frame.configure(self, takefocus=1)
@@ -202,10 +202,16 @@ class Checkbox(ctk.CTkFrame):
             self._box.select()
         else:
             self._box.deselect()
+        self._paint_hover()
 
     def _toggled(self) -> None:
+        self._paint_hover()
         self.focus_set()
         self._command(self.get())
+
+    def _paint_hover(self) -> None:
+        # CTkCheckBox hovers both states with one colour; an unticked box must not look ticked.
+        self._painter.paint(self._box, hover_color="accent" if self.get() else "surface")
 
 
 class Icons(NamedTuple):

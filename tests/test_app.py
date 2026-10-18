@@ -360,6 +360,57 @@ def test_cancel_discards_the_animation_choice(tmp_path: Path) -> None:
         close(app)
 
 
+def test_turning_animation_back_on_leaves_one_tick_pending(tmp_path: Path) -> None:
+    saved: list[Settings] = []
+    settings = replace(default_settings(is_laptop=False), animate_scene=False)
+    app = open_app(tmp_path, FakeSampler(), settings, on_save=saved.append)
+    try:
+        assert pending_ticks(app) == 0
+        click(app, "Settings")
+        press_space(app, checkbox_of(app))
+        click(app, "Save")
+
+        assert [s.animate_scene for s in saved] == [True]
+        assert pending_ticks(app) == 1
+    finally:
+        close(app)
+
+
+def test_tab_from_the_theme_control_reaches_the_checkbox(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        click(app, "Settings")
+        [light] = [
+            w
+            for w in descendants(app)
+            if isinstance(w, ctk.CTkButton) and w.cget("text") == "Light"
+        ]
+        light.focus_force()
+        pump(app, 0.1)
+
+        assert light.tk_focusNext() is checkbox_of(app)
+    finally:
+        close(app)
+
+
+def test_unticked_checkbox_is_outlined_and_hovers_without_filling(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        click(app, "Settings")
+        box = checkbox_of(app)
+        inner = box.winfo_children()[0]
+        assert inner.cget("hover_color") == DARK.accent
+
+        press_space(app, box)
+
+        assert inner.cget("border_color") == DARK.text_muted
+        assert inner.cget("hover_color") == DARK.surface
+        press_space(app, box)
+        assert inner.cget("hover_color") == DARK.accent
+    finally:
+        close(app)
+
+
 def test_animation_choice_is_kept_when_other_settings_change(tmp_path: Path) -> None:
     saved: list[Settings] = []
     settings = replace(default_settings(is_laptop=False), animate_scene=False)
