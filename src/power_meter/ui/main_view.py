@@ -1,3 +1,4 @@
+import time
 import tkinter
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from power_meter.ui.format import baht, baht_short, duration, price_line, watts
 from power_meter.ui.theme import Palette
 
 RESET_CONFIRM_MS: Final = 3000
+RESET_MIN_GAP_S: Final = 0.4
 NO_VALUE: Final = "—"
 HOURS_MIN, HOURS_MAX = (int(limit) for limit in FIELD_RANGES["hours_per_day"])
 
@@ -85,8 +87,9 @@ class _Button(ctk.CTkButton):
         tkinter.Frame.configure(self, takefocus=1)
         tkinter.Misc.bind(self, "<FocusIn>", lambda _e: self.configure(border_width=FOCUS_RING_W))
         tkinter.Misc.bind(self, "<FocusOut>", lambda _e: self.configure(border_width=0))
-        tkinter.Misc.bind(self, "<Return>", lambda _e: self.invoke())
-        tkinter.Misc.bind(self, "<space>", lambda _e: self.invoke())
+        # On release, not press: a held key auto-repeats KeyPress and would fire repeatedly.
+        tkinter.Misc.bind(self, "<KeyRelease-Return>", lambda _e: self.invoke())
+        tkinter.Misc.bind(self, "<KeyRelease-space>", lambda _e: self.invoke())
 
     # CTkButton sends focus to its inner label, which has none of the key bindings above.
     def focus_set(self) -> None:
@@ -116,14 +119,17 @@ class MainView(ctk.CTkFrame):
         on_reset: Callable[[], None],
         on_toggle_theme: Callable[[], None],
         on_hours_change: Callable[[int], None],
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(master, corner_radius=0)
+        self._clock = clock
         self._palette = palette
         self._on_reset = on_reset
         self._on_hours_change = on_hours_change
         self._roles: dict[Any, dict[str, str]] = {}
         self._hours = 0
         self._reset_job: str | None = None
+        self._reset_armed_at = 0.0
         self._detail_cells: list[tuple[Any, Any, Any]] = []
 
         self._font_cost = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_COST, "bold")
@@ -354,7 +360,11 @@ class MainView(ctk.CTkFrame):
         if self._reset_job is None:
             _set_text(self._reset_button, "Click again to reset")
             self._paint(self._reset_button, text_color="error")
+            self._reset_armed_at = self._clock()
             self._reset_job = self.after(RESET_CONFIRM_MS, self._end_reset_confirm)
+            return
+        # A double-click or key repeat is not a deliberate second click.
+        if self._clock() - self._reset_armed_at < RESET_MIN_GAP_S:
             return
         self.after_cancel(self._reset_job)
         self._end_reset_confirm()
