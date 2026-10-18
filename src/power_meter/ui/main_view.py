@@ -16,6 +16,9 @@ from power_meter.ui.widgets import Button, Painter, ghost_button, label, row, se
 RESET_CONFIRM_MS: Final = 3000
 RESET_MIN_GAP_S: Final = 0.4
 NO_VALUE: Final = "—"
+RESTARTING: Final = "Measurement paused — restarting"
+CANNOT_SAVE: Final = "Settings can't be saved on this PC"
+ESTIMATES_ONLY: Final = "Estimates only on this PC"
 HOURS_MIN, HOURS_MAX = (int(limit) for limit in FIELD_RANGES["hours_per_day"])
 
 
@@ -36,7 +39,9 @@ class MainViewModel:
     notice: str | None
 
 
-def build_view_model(state: MeterState, settings: Settings) -> MainViewModel:
+def build_view_model(
+    state: MeterState, settings: Settings, *, can_save: bool = True
+) -> MainViewModel:
     snap, display_w = state.snapshot, state.display_w
     if state.status != "warming_up" and snap is not None and display_w is not None:
         power = watts(display_w)
@@ -51,10 +56,12 @@ def build_view_model(state: MeterState, settings: Settings) -> MainViewModel:
 
     notice = None
     if state.status == "restarting":
-        notice = "Measurement paused — restarting"
+        notice = RESTARTING
+    elif not can_save:
+        notice = CANNOT_SAVE
     # On battery the total comes from the battery's own discharge reading, so it is measured.
     elif snap is not None and snap.all_estimated and not snap.on_battery:
-        notice = "Estimates only on this PC"
+        notice = ESTIMATES_ONLY
 
     return MainViewModel(
         spent=baht(state.totals.cost_thb),

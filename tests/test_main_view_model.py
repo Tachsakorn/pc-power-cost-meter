@@ -118,6 +118,28 @@ def test_all_estimated_notice() -> None:
     assert build_view_model(state, SETTINGS).notice == "Estimates only on this PC"
 
 
+def test_cannot_save_notice() -> None:
+    vm = build_view_model(RUNNING, SETTINGS, can_save=False)
+
+    assert vm.notice == "Settings can't be saved on this PC"
+
+
+def test_cannot_save_takes_priority_over_estimates() -> None:
+    state = replace(RUNNING, snapshot=replace(SNAPSHOT, all_estimated=True))
+
+    assert build_view_model(state, SETTINGS, can_save=False).notice == (
+        "Settings can't be saved on this PC"
+    )
+
+
+def test_restarting_takes_priority_over_cannot_save() -> None:
+    state = replace(RUNNING, status="restarting")
+
+    assert build_view_model(state, SETTINGS, can_save=False).notice == (
+        "Measurement paused — restarting"
+    )
+
+
 def test_no_estimates_notice_on_battery() -> None:
     battery = replace(
         SNAPSHOT,

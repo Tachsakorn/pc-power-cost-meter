@@ -286,7 +286,10 @@ Price: Normal meter · ฿4.50 per unit (default)  Change
 | Warming up (first sample) | Values show "—"; no fake numbers |
 | No measured sources | Details list "estimated" for each part; one-line note: "Estimates only on this PC" |
 | Source demoted mid-session | Label switches to "estimated"; no popup |
-| Storage not writable anywhere | Non-blocking note: "Settings can't be saved on this PC"; app keeps running |
+| Storage not writable anywhere, or a save failed | Non-blocking note: "Settings can't be saved on this PC"; app keeps running |
+| Sampler tick failed | Note: "Measurement paused — restarting" until fresh data arrives |
+
+The notes share one line next to "Right now". When several apply, the highest wins: restarting, then can't save, then estimates only.
 
 ### Design tokens
 

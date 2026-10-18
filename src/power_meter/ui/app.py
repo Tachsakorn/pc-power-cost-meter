@@ -26,7 +26,6 @@ TITLE: Final = "PC Power & Cost Meter"
 # The main view needs about 552 px with details expanded; Settings scrolls inside this.
 WIDTH, HEIGHT = 460, 560
 POLL_MS: Final = 250
-CANNOT_SAVE: Final = "Settings can't be saved on this PC"
 NO_DATA_DIR: Final = "None — no writable folder on this PC"
 
 XS, S, M, L, XL = theme.SPACE
@@ -105,9 +104,8 @@ class App(ctk.CTk):
     def _poll(self) -> None:
         # Scheduled first, so one failed render doesn't freeze the display for good.
         self._poll_job = self.after(POLL_MS, self._poll)
-        vm = build_view_model(self._sampler.latest(), self._settings)
-        if vm.notice is None and (self._data_dir is None or self._save_failed):
-            vm = replace(vm, notice=CANNOT_SAVE)
+        can_save = self._data_dir is not None and not self._save_failed
+        vm = build_view_model(self._sampler.latest(), self._settings, can_save=can_save)
         self._main_view.render(vm)
 
     def _use_settings(self, settings: Settings) -> None:
