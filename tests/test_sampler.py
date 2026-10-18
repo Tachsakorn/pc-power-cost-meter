@@ -307,7 +307,8 @@ def test_failed_save_log_leaves_out_the_path(
 
 
 def test_stop_saves_and_closes_model(make_rig: Callable[..., Rig]) -> None:
-    rig = make_rig()
+    # A frozen clock, so free-running ticks while stopping can't reach the autosave interval.
+    rig = make_rig(clock=ManualClock(step=0))
     rig.feed(100.0, 200.0)
     rig.stop()
     assert not rig.sampler.is_alive()
