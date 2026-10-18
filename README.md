@@ -305,8 +305,10 @@ and starts with default settings.
 
 | PC | Result |
 |---|---|
-| Desktop: AMD Ryzen 5 5600, AMD Radeon RX 7600, Windows 11 25H2 | Sensor check passed: CPU measured via RAPL, GPU measured via ADL |
-| Laptop: AMD Ryzen 5 3500U, AMD Radeon Vega 8 (integrated only), Windows 11 25H2 | CPU measured via RAPL, battery discharge measured, no discrete GPU (correctly not counted) |
+| Desktop: AMD Ryzen 5 5600, AMD Radeon RX 7600, Windows 11 25H2 | CPU measured via RAPL, GPU measured via ADL |
+| Desktop: AMD Ryzen 5 7500F, NVIDIA GeForce RTX 5060 | CPU measured via RAPL, GPU measured via NVML |
+| Desktop: Intel Core CPU, NVIDIA GeForce GPU | CPU measured via RAPL, GPU measured via NVML |
+| Laptop: AMD Ryzen 5 3500U, AMD Radeon Vega 8 (integrated only), Windows 11 25H2 | CPU measured via RAPL, battery discharge measured, integrated GPU correctly not counted twice; after a few minutes on battery the plugged-in reading matched the battery one (28 W) |
 | Laptop: AMD Ryzen AI, NVIDIA GeForce RTX 5070 Laptop GPU | Not yet verified |
 
 ## Privacy
@@ -376,7 +378,7 @@ Build the single-file exe:
 pyinstaller packaging\power_meter.spec
 ```
 
-The result is `dist\PCPowerCostMeter.exe`. Pushing a tag such as `v0.2.0` runs the same build on
+The result is `dist\PCPowerCostMeter.exe`. Pushing a tag such as `v1.0.0` runs the same build on
 GitHub Actions and attaches the exe and `SHA256SUMS.txt` to a GitHub release.
 
 The design notes behind the app are in [docs/design.md](docs/design.md).
