@@ -3,6 +3,7 @@ import sys
 import tkinter
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime
 from importlib import resources
 from pathlib import Path
 from types import TracebackType
@@ -14,6 +15,7 @@ from power_meter.power_model import PowerSnapshot
 from power_meter.sampler import Sampler
 from power_meter.sensors.base import Component
 from power_meter.settings import Settings
+from power_meter.tariff import HolidayCalendar, tariff_from_settings
 from power_meter.ui import theme
 from power_meter.ui.main_view import MainView, build_view_model
 from power_meter.ui.settings_view import SettingsView
@@ -62,6 +64,7 @@ class App(ctk.CTk):
         self,
         sampler: Sampler,
         settings: Settings,
+        holidays: HolidayCalendar,
         data_dir: Path | None,
         save_settings: Callable[[Settings], None],
         on_close: Callable[[], None],
@@ -70,6 +73,8 @@ class App(ctk.CTk):
         super().__init__()
         self._sampler = sampler
         self._settings = settings
+        self._holidays = holidays
+        self._tariff = tariff_from_settings(settings, holidays)
         self._data_dir = data_dir
         self._save_settings = save_settings
         self._on_close = on_close
@@ -105,11 +110,13 @@ class App(ctk.CTk):
         # Scheduled first, so one failed render doesn't freeze the display for good.
         self._poll_job = self.after(POLL_MS, self._poll)
         can_save = self._data_dir is not None and not self._save_failed
-        vm = build_view_model(self._sampler.latest(), self._settings, can_save=can_save)
+        rate = self._tariff.rate_at(datetime.now())
+        vm = build_view_model(self._sampler.latest(), self._settings, rate, can_save=can_save)
         self._main_view.render(vm)
 
     def _use_settings(self, settings: Settings) -> None:
         self._settings = settings
+        self._tariff = tariff_from_settings(settings, self._holidays)
         try:
             self._save_settings(settings)
         except OSError as exc:

@@ -1,13 +1,15 @@
 from dataclasses import replace
+from datetime import datetime
 
 from power_meter.meter import Totals
 from power_meter.power_model import Part, PowerSnapshot
 from power_meter.sampler import MeterState
-from power_meter.settings import default_settings
+from power_meter.settings import MeterType, default_settings
 from power_meter.tariff import Period, RateInfo
 from power_meter.ui.main_view import build_view_model
 
 SETTINGS = default_settings(is_laptop=False)
+FLAT = RateInfo(rate=4.5, period=Period.FLAT, next_change=None)
 
 SNAPSHOT = PowerSnapshot(
     wall_w=247.0,
@@ -27,7 +29,6 @@ RUNNING = MeterState(
     snapshot=SNAPSHOT,
     totals=Totals(cost_thb=1.2847, energy_kwh=0.2855, elapsed_s=8100.0),
     session=Totals(cost_thb=1.2847, energy_kwh=0.2855, elapsed_s=8100.0),
-    rate=RateInfo(rate=4.5, period=Period.FLAT, next_change=None),
     status="running",
     display_w=247.0,
 )
@@ -44,7 +45,7 @@ def test_warming_up_shows_dash() -> None:
         display_w=None,
     )
 
-    vm = build_view_model(state, SETTINGS)
+    vm = build_view_model(state, SETTINGS, FLAT)
 
     assert vm.spent == "฿ 12.5000"
     assert vm.spent_caption == "in 10h 0m"
@@ -56,7 +57,7 @@ def test_warming_up_shows_dash() -> None:
 
 
 def test_running_values() -> None:
-    vm = build_view_model(RUNNING, SETTINGS)
+    vm = build_view_model(RUNNING, SETTINGS, FLAT)
 
     assert vm.spent == "฿ 1.2847"
     assert vm.spent_caption == "in 2h 15m"
@@ -76,14 +77,24 @@ def test_running_values() -> None:
 
 
 def test_per_hour_uses_smoothed_watts() -> None:
-    vm = build_view_model(replace(RUNNING, display_w=200.0), SETTINGS)
+    vm = build_view_model(replace(RUNNING, display_w=200.0), SETTINGS, FLAT)
 
     assert vm.power == "200 W"
     assert vm.per_hour == "about ฿0.90 per hour"
 
 
+def test_price_and_per_hour_use_the_given_rate() -> None:
+    tou = replace(SETTINGS, meter_type=MeterType.TOU)
+    peak = RateInfo(rate=6.38, period=Period.PEAK, next_change=datetime(2026, 10, 14, 22, 0))
+
+    vm = build_view_model(RUNNING, tou, peak)
+
+    assert vm.price.startswith("Price: TOU · Peak ฿6.38 now")
+    assert vm.per_hour == "about ฿1.58 per hour"
+
+
 def test_monthly_follows_hours_per_day() -> None:
-    vm = build_view_model(RUNNING, replace(SETTINGS, hours_per_day=24))
+    vm = build_view_model(RUNNING, replace(SETTINGS, hours_per_day=24), FLAT)
 
     assert vm.monthly == "≈ ฿411 per month"
     assert vm.hours_per_day == 24
@@ -93,13 +104,13 @@ def test_monthly_measuring() -> None:
     short_session = Totals(cost_thb=0.002, energy_kwh=0.0004, elapsed_s=30.0)
     state = replace(RUNNING, session=short_session)
 
-    assert build_view_model(state, SETTINGS).monthly == "Measuring…"
+    assert build_view_model(state, SETTINGS, FLAT).monthly == "Measuring…"
 
 
 def test_restarting_notice() -> None:
     state = replace(RUNNING, status="restarting")
 
-    vm = build_view_model(state, SETTINGS)
+    vm = build_view_model(state, SETTINGS, FLAT)
 
     assert vm.notice == "Measurement paused — restarting"
     assert vm.power == "247 W"
@@ -109,17 +120,17 @@ def test_restarting_takes_priority_over_estimates() -> None:
     estimated = replace(SNAPSHOT, all_estimated=True)
     state = replace(RUNNING, snapshot=estimated, status="restarting")
 
-    assert build_view_model(state, SETTINGS).notice == "Measurement paused — restarting"
+    assert build_view_model(state, SETTINGS, FLAT).notice == "Measurement paused — restarting"
 
 
 def test_all_estimated_notice() -> None:
     state = replace(RUNNING, snapshot=replace(SNAPSHOT, all_estimated=True))
 
-    assert build_view_model(state, SETTINGS).notice == "Estimates only on this PC"
+    assert build_view_model(state, SETTINGS, FLAT).notice == "Estimates only on this PC"
 
 
 def test_cannot_save_notice() -> None:
-    vm = build_view_model(RUNNING, SETTINGS, can_save=False)
+    vm = build_view_model(RUNNING, SETTINGS, FLAT, can_save=False)
 
     assert vm.notice == "Settings can't be saved on this PC"
 
@@ -127,7 +138,7 @@ def test_cannot_save_notice() -> None:
 def test_cannot_save_takes_priority_over_estimates() -> None:
     state = replace(RUNNING, snapshot=replace(SNAPSHOT, all_estimated=True))
 
-    assert build_view_model(state, SETTINGS, can_save=False).notice == (
+    assert build_view_model(state, SETTINGS, FLAT, can_save=False).notice == (
         "Settings can't be saved on this PC"
     )
 
@@ -135,7 +146,7 @@ def test_cannot_save_takes_priority_over_estimates() -> None:
 def test_restarting_takes_priority_over_cannot_save() -> None:
     state = replace(RUNNING, status="restarting")
 
-    assert build_view_model(state, SETTINGS, can_save=False).notice == (
+    assert build_view_model(state, SETTINGS, FLAT, can_save=False).notice == (
         "Measurement paused — restarting"
     )
 
@@ -148,13 +159,13 @@ def test_no_estimates_notice_on_battery() -> None:
         all_estimated=True,
     )
 
-    assert build_view_model(replace(RUNNING, snapshot=battery), SETTINGS).notice is None
+    assert build_view_model(replace(RUNNING, snapshot=battery), SETTINGS, FLAT).notice is None
 
 
 def test_usage_fraction_clamped() -> None:
     def fraction(wall_w: float, peak_w: float) -> float:
         snapshot = replace(SNAPSHOT, wall_w=wall_w, peak_w=peak_w)
-        return build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS).usage_fraction
+        return build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT).usage_fraction
 
     assert fraction(150.0, 300.0) == 0.5
     assert fraction(400.0, 300.0) == 1.0

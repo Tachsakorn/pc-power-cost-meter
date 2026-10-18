@@ -98,16 +98,18 @@ sampler thread (every 1.0 s, monotonic clock)
   power_model.sample() ──► PowerSnapshot(wall_w, parts, on_battery, usage_label, peak_w)
   tariff.rate_at(now)  ──► RateInfo(rate, period, next_change)
   meter.add(wall_w, mono_s, rate)
-  publish MeterState(snapshot, totals, session, rate, status, display_w)   (latest only, under a lock)
+  publish MeterState(snapshot, totals, session, status, display_w)   (latest only, under a lock)
   every 30 s: save totals
 
 Tk main loop (after() every 250 ms)
-  sampler.latest() ──► build_view_model(state, settings) ──► MainView.render(view_model)
+  tariff.rate_at(now) for the window's current settings ──► RateInfo
+  sampler.latest() + settings + RateInfo ──► build_view_model() ──► MainView.render(view_model)
 ```
 
 - Hardware calls never run on the Tk thread, so a slow or hung driver call cannot freeze the window.
 - Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()` and `request_reset()`, which queue commands for the sampler's next tick.
 - `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text.
+- The window prices the display from its own copy of the settings rather than the sampler's, so right after a settings change the price line and cost per hour never mix the new meter type with the old rate. Billing switches on the sampler's next tick.
 
 ## 4. Power model
 

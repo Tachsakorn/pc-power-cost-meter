@@ -13,7 +13,7 @@ from power_meter.meter import Meter, Totals
 from power_meter.power_model import PowerModel, PowerSnapshot
 from power_meter.sampler import Sampler
 from power_meter.settings import MeterType, Settings, default_settings
-from power_meter.tariff import HolidayCalendar, Period
+from power_meter.tariff import HolidayCalendar
 
 DESKTOP = default_settings(is_laptop=False)
 TOU = replace(DESKTOP, meter_type=MeterType.TOU)
@@ -149,7 +149,6 @@ def test_warming_up_before_first_tick(make_rig: Callable[..., Rig]) -> None:
     assert state.display_w is None
     assert state.totals == Totals()
     assert state.session == Totals()
-    assert state.rate.rate == pytest.approx(4.50)
 
 
 def test_publishes_running_state(make_rig: Callable[..., Rig]) -> None:
@@ -158,7 +157,6 @@ def test_publishes_running_state(make_rig: Callable[..., Rig]) -> None:
     state = rig.sampler.latest()
     assert state.status == "running"
     assert state.snapshot == snapshot(120.0)
-    assert state.rate.rate == pytest.approx(4.50)
     assert state.totals == rig.meter.totals
     assert state.session == rig.meter.session
     assert state.totals.energy_kwh == pytest.approx(120 / WS_PER_KWH)
@@ -208,16 +206,13 @@ def test_reset_requested_just_before_stop_is_saved(make_rig: Callable[..., Rig])
 def test_apply_settings_switches_tariff(make_rig: Callable[..., Rig]) -> None:
     rig = make_rig()
     rig.feed(100.0)
-    assert rig.sampler.latest().rate.period is Period.FLAT
     rig.sampler.apply_settings(TOU)
     rig.feed(100.0)
-    assert rig.sampler.latest().rate.period is Period.FLAT
     cost_before = rig.sampler.latest().totals.cost_thb
+    assert cost_before == pytest.approx(100 / WS_PER_KWH * 4.50)
     rig.feed(100.0)
-    state = rig.sampler.latest()
-    assert state.rate.period is Period.PEAK
-    assert state.rate.rate == pytest.approx(6.38)
-    assert state.totals.cost_thb - cost_before == pytest.approx(100 / WS_PER_KWH * 6.38)
+    cost_after = rig.sampler.latest().totals.cost_thb
+    assert cost_after - cost_before == pytest.approx(100 / WS_PER_KWH * 6.38)
     assert rig.model.settings == [TOU]
 
 

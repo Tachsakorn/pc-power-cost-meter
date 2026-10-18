@@ -8,6 +8,7 @@ import customtkinter as ctk
 from power_meter.projection import monthly_cost
 from power_meter.sampler import MeterState
 from power_meter.settings import FIELD_RANGES, Settings
+from power_meter.tariff import RateInfo
 from power_meter.ui import theme
 from power_meter.ui.format import baht, baht_short, duration, price_line, watts
 from power_meter.ui.theme import Palette
@@ -40,12 +41,13 @@ class MainViewModel:
 
 
 def build_view_model(
-    state: MeterState, settings: Settings, *, can_save: bool = True
+    state: MeterState, settings: Settings, rate: RateInfo, *, can_save: bool = True
 ) -> MainViewModel:
+    """`rate` is the price in effect now under `settings`, so the price line always matches them."""
     snap, display_w = state.snapshot, state.display_w
     if state.status != "warming_up" and snap is not None and display_w is not None:
         power = watts(display_w)
-        per_hour = f"about {baht_short(display_w * state.rate.rate / 1000)} per hour"
+        per_hour = f"about {baht_short(display_w * rate.rate / 1000)} per hour"
         usage_label = snap.usage_label
         usage_fraction = min(max(snap.wall_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
         details = tuple((p.label, watts(p.watts), p.detail) for p in snap.parts)
@@ -73,7 +75,7 @@ def build_view_model(
         monthly="Measuring…" if projected is None else f"≈ {baht_short(projected)} per month",
         hours_per_day=settings.hours_per_day,
         details=details,
-        price=f"Price: {price_line(settings, state.rate)}",
+        price=f"Price: {price_line(settings, rate)}",
         notice=notice,
     )
 

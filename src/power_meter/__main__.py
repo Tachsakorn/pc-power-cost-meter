@@ -63,9 +63,8 @@ def start(data_dir: Path | None) -> App:
 
     sources = build_sources(settings)
     model = PowerModel(sources.chains, sources.battery, settings, refresh=sources.load.refresh)
-    sampler = Sampler(
-        model, Meter(totals), settings, HolidayCalendar.bundled(), saver(save_totals, data_dir)
-    )
+    holidays = HolidayCalendar.bundled()
+    sampler = Sampler(model, Meter(totals), settings, holidays, saver(save_totals, data_dir))
     sampler.start()
 
     def shut_down() -> None:
@@ -74,7 +73,7 @@ def start(data_dir: Path | None) -> App:
         if not sampler.is_alive():
             sources.load.close()
 
-    return App(sampler, settings, data_dir, saver(save_settings, data_dir), shut_down)
+    return App(sampler, settings, holidays, data_dir, saver(save_settings, data_dir), shut_down)
 
 
 def main() -> int:

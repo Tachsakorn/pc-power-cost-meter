@@ -12,7 +12,7 @@ from typing import Final, Literal
 from power_meter.meter import Meter, Totals
 from power_meter.power_model import PowerModel, PowerSnapshot
 from power_meter.settings import Settings
-from power_meter.tariff import HolidayCalendar, RateInfo, tariff_from_settings
+from power_meter.tariff import HolidayCalendar, tariff_from_settings
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,6 @@ class MeterState:
     snapshot: PowerSnapshot | None
     totals: Totals
     session: Totals
-    rate: RateInfo
     status: Status
     display_w: float | None
     """Mean of the last few readings, to steady the headline number. Billing uses raw readings."""
@@ -72,7 +71,6 @@ class Sampler(threading.Thread):
             snapshot=None,
             totals=meter.totals,
             session=meter.session,
-            rate=self._tariff.rate_at(now()),
             status="warming_up",
             display_w=None,
         )
@@ -115,15 +113,14 @@ class Sampler(threading.Thread):
     def _tick(self) -> None:
         self._run_commands()
         snap = self._model.sample()
-        info = self._tariff.rate_at(self._now())
+        rate = self._tariff.rate_at(self._now()).rate
         mono_s = self._mono()
-        self._meter.add(snap.wall_w, mono_s, info.rate)
+        self._meter.add(snap.wall_w, mono_s, rate)
         self._recent_w.append(snap.wall_w)
         state = MeterState(
             snapshot=snap,
             totals=self._meter.totals,
             session=self._meter.session,
-            rate=info,
             status="running",
             display_w=fmean(self._recent_w),
         )
