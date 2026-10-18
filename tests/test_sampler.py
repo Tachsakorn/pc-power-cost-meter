@@ -1,5 +1,6 @@
 import logging
 import queue
+import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
@@ -250,6 +251,26 @@ def test_autosave_called(make_rig: Callable[..., Rig]) -> None:
     clock.now = 45.0
     rig.feed(100.0)
     assert len(rig.saves) == 1
+
+
+def test_save_now_saves_on_the_sampler_thread(make_rig: Callable[..., Rig]) -> None:
+    saved: list[tuple[str, Totals]] = []
+    rig = make_rig(
+        clock=ManualClock(),
+        persisted=Totals(12.5, 2.0, 3600.0),
+        save=lambda totals: saved.append((threading.current_thread().name, totals)),
+    )
+    rig.model.release()
+    rig.sampler.save_now()
+    assert saved == [("sampler", Totals(12.5, 2.0, 3600.0))]
+
+
+def test_save_now_after_stop_returns_at_once(make_rig: Callable[..., Rig]) -> None:
+    rig = make_rig()
+    rig.stop()
+    started = time.monotonic()
+    rig.sampler.save_now()
+    assert time.monotonic() - started < 0.5
 
 
 def test_failed_save_is_logged_and_sampling_continues(

@@ -272,7 +272,7 @@ no crash reports. It reads hardware sensors and writes only the files below.
 | File | Contents | When it is written |
 |---|---|---|
 | `config.json` | Your settings: meter type, prices, hardware values, theme, hours per day, extra holidays | When you save settings, switch theme or change hours per day |
-| `state.json` | Total cost, energy and measured time | Every 30 seconds and when the app closes |
+| `state.json` | Total cost, energy and measured time | Every 30 seconds, after a reset, when the app closes, and when Windows shuts down or logs off |
 | `power-meter.log`, `power-meter.log.1`, `power-meter.log.2` | App version, sensors that are unavailable, sources that failed or recovered, and errors | When those events happen; each file is capped at 256 KB |
 | `config.json.bak`, `state.json.bak` | A previous file that could not be read, kept for inspection | Only if a file was damaged |
 

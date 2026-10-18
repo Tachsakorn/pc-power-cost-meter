@@ -86,6 +86,9 @@ class App(ctk.CTk):
         self.geometry(f"{WIDTH}x{HEIGHT}")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self._close)
+        # Sent when Windows is shutting down or logging off. The process can end without a
+        # close event, so the totals since the last autosave would be lost.
+        self.protocol("WM_SAVE_YOURSELF", sampler.save_now)
 
         palette = palette_for(settings.theme)
         self.configure(fg_color=palette.background)

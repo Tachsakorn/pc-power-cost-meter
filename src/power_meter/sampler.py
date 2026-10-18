@@ -36,7 +36,7 @@ class Sampler(threading.Thread):
     """Samples power on its own thread and bills it through the meter.
 
     Only this thread touches the model and the meter; other threads talk to it through
-    latest(), apply_settings(), request_reset() and stop().
+    latest(), apply_settings(), request_reset(), save_now() and stop().
     """
 
     def __init__(
@@ -83,6 +83,19 @@ class Sampler(threading.Thread):
 
     def request_reset(self) -> None:
         self._commands.put(self._reset)
+
+    def save_now(self, timeout: float = 2.0) -> None:
+        """Saves the totals on this thread and waits up to `timeout` for it to finish."""
+        if not self.is_alive() or self._stopping.is_set():
+            return
+        done = threading.Event()
+
+        def save() -> None:
+            self._save()
+            done.set()
+
+        self._commands.put(save)
+        done.wait(timeout)
 
     def stop(self, timeout: float = 3.0) -> None:
         if self._stopping.is_set():

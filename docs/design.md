@@ -107,7 +107,7 @@ Tk main loop (after() every 250 ms)
 ```
 
 - Hardware calls never run on the Tk thread, so a slow or hung driver call cannot freeze the window.
-- Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()` and `request_reset()`, which queue commands for the sampler's next tick.
+- Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()`, `request_reset()` and `save_now()`, which queue commands for the sampler's next tick. Commands still queued when the sampler stops run before the final save.
 - `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text.
 - The window prices the display from its own copy of the settings rather than the sampler's, so right after a settings change the price line and cost per hour never mix the new meter type with the old rate. Billing switches on the sampler's next tick.
 
@@ -316,7 +316,7 @@ The light-mode accents are darker than the original palette's `#27AE60`/`#2980B9
 Two files in the same folder:
 
 - `config.json`: user settings. Written when settings are saved, when the theme button is used, and when the hours stepper changes.
-- `state.json`: accumulated cost, energy, and elapsed time. Written every 30 s, right after a reset, and on close.
+- `state.json`: accumulated cost, energy, and elapsed time. Written every 30 s, right after a reset, on close, and when Windows signals a shutdown or log-off (Tk's `WM_SAVE_YOURSELF`), since the process may then end without a close event. Every write happens on the sampler thread.
 
 **Location:** the folder containing the `.exe` (`sys.executable` when frozen, not the PyInstaller temp folder). If that folder is not writable, use `%APPDATA%\PCPowerCostMeter\`. The resolved location is shown under Advanced settings.
 
