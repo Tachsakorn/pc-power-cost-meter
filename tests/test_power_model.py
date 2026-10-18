@@ -400,8 +400,8 @@ def laptop_model(
     )
 
 
-def run_for(model: PowerModel, clock: FakeClock, seconds: int, step: float = 1.0) -> None:
-    for _ in range(seconds):
+def run_for(model: PowerModel, clock: FakeClock, samples: int, step: float = 1.0) -> None:
+    for _ in range(samples):
         clock.now += step
         model.sample()
 
@@ -534,6 +534,14 @@ def test_battery_breakdown_is_unchanged_while_learning() -> None:
     model.sample()
     run_for(model, clock, 60)
     assert [p.label for p in model.sample().parts] == ["Battery", "Charging loss"]
+
+
+def test_learned_value_feeds_the_usage_budget_on_battery() -> None:
+    clock = FakeClock()
+    model = laptop_model(FakeBattery(on_battery(28)), clock)
+    model.sample()
+    run_for(model, clock, 60)
+    assert model.sample().peak_w == pytest.approx((45 + 21) / 0.90)
 
 
 def test_desktop_never_learns() -> None:

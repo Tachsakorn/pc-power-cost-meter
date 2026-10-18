@@ -69,8 +69,7 @@ def start(data_dir: Path | None) -> App:
         settings,
         refresh=sources.load.refresh,
         load=sources.load,
-        # A learned value only applies to the laptop it was learned on, not to a desktop the
-        # folder was copied to.
+        # Desktops never learn, so a value in a state.json copied over from a laptop is ignored.
         learned_other_w=state.learned_other_w if is_laptop else None,
         profile_other_w=default_settings(is_laptop).other_w,
     )

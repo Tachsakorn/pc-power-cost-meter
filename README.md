@@ -144,17 +144,32 @@ P_{\mathrm{wall}} = \frac{\lvert P_{\mathrm{battery}} \rvert}{\eta_{\mathrm{char
 
 On a laptop, the battery also corrects the fixed *Other components* value. Whatever the discharge
 rate shows beyond the CPU reading and any discrete GPU reading is drawn by the rest of the laptop:
-screen, memory, storage, Wi-Fi. The app averages that remainder, limited to 0–150 W, with a
-two-minute time constant:
+screen, memory, storage, Wi-Fi. For each battery sample the app takes that remainder $r$, limited
+to 0–150 W, and averages it with a two-minute time constant:
 
 ```math
-P_{\mathrm{other}} \leftarrow P_{\mathrm{other}} + \frac{\Delta t}{120\,\mathrm{s} + \Delta t}
-\left( P_{\mathrm{battery}} - P_{\mathrm{cpu}} - P_{\mathrm{gpu}} - P_{\mathrm{other}} \right)
+r = \min\bigl(\max(P_{\mathrm{battery}} - P_{\mathrm{cpu}} - P_{\mathrm{gpu,discrete}},\ 0),\ 150\,\mathrm{W}\bigr)
+\qquad
+\alpha = \frac{\Delta t}{120\,\mathrm{s} + \Delta t}
 ```
 
+```math
+A \leftarrow A + \alpha\,(r - A)
+\qquad
+w \leftarrow w + \alpha\,(1 - w)
+\qquad
+P_{\mathrm{other}} = \frac{A}{w}
+```
+
+$P_{\mathrm{gpu,discrete}}$ is 0 on a laptop with integrated graphics only. The average $A$ and its
+weight $w$ start from zero, so dividing by the weight built up so far makes the first minute a
+weighted mean of all its samples instead of leaning on the first one; as $w$ approaches 1 this
+becomes an ordinary moving average. Details are in [docs/design.md §4](docs/design.md#4-power-model).
+
 After a minute on battery, the plugged-in breakdown uses this value, marked *learned on battery*,
-instead of the default. If you set *Other components* yourself in Advanced settings, your value
-is used. The learned value is kept in `state.json`, so it survives restarts and a reset of the
+instead of the default. It also replaces the default in the power budget behind the usage level,
+both plugged in and on battery, so the level doesn't jump when the charger is unplugged. If you
+set *Other components* yourself in Advanced settings, your value is used everywhere. The learned value is kept in `state.json`, so it survives restarts and a reset of the
 total.
 
 When CPU or GPU power cannot be measured, it is estimated from utilisation $u$ (0 to 1) and the TDP
