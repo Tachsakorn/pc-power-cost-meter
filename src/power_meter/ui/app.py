@@ -197,9 +197,7 @@ def show_already_running() -> None:
     painter = Painter(theme.DARK)
     painter.paint(window, fg_color="background")
     font = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY)
-    label(painter, window, f"{TITLE} is already running.", font, "text").pack(
-        padx=XL, pady=(XL, M)
-    )
+    label(painter, window, f"{TITLE} is already running.", font, "text").pack(padx=XL, pady=(XL, M))
     ok = Button(
         window,
         text="OK",
