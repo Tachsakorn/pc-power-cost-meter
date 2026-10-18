@@ -1,7 +1,6 @@
-# PC Power & Cost Meter: Design Spec
+# PC Power & Cost Meter: Design
 
 - **Date:** 2026-10-18
-- **Status:** Approved
 - **Repo:** `pc-power-cost-meter` (MIT)
 
 ## 1. Purpose
@@ -31,9 +30,9 @@ A small Windows desktop app that shows, in real time, how much electricity a PC 
 - Measuring the monitor or other devices plugged in separately (the user can add a fixed wattage instead)
 - Tracking time while the app is closed
 
-## 2. Hardware evidence (probe results)
+## 2. Hardware evidence
 
-A throwaway probe (`tools/probe.py`) was run on the owner's desktop: Ryzen 5 5600, RX 7600, B450M, Windows 11 25H2, Python 3.15.0, standard user.
+Measured with `tools/probe.py` on a desktop with a Ryzen 5 5600, RX 7600 and B450M board, running Windows 11 25H2 and Python 3.15.0 under a standard user account.
 
 | Source | Result | Idle | Load |
 |---|---|---|---|
@@ -44,60 +43,73 @@ A throwaway probe (`tools/probe.py`) was run on the owner's desktop: Ryzen 5 560
 | NVML | Not present on desktop | n/a | n/a |
 | Battery IOCTL | No battery on desktop | n/a | n/a |
 
-**Sensor #73 is `PMLOG_BOARD_POWER`** (total board power in watts), as defined in the ADL SDK's `adl_defines.h`. It was first spotted because it tracks GPU activity and matches the RX 7600's ~165 W board power, and the desktop sensor check measured the GPU through it.
+**Sensor #73 is `PMLOG_BOARD_POWER`** (total board power in watts), as defined in the ADL SDK's `adl_defines.h`. Its readings track GPU activity and stay within the RX 7600's ~165 W board power, and `tools/sensor_check.py` reads the GPU as measured through it on the same desktop.
 
-**Not yet verified:** the laptop (Gigabyte, Ryzen AI, RTX 5070 Laptop). Untested there: NVML on a hybrid-graphics laptop, the battery discharge rate, and Energy Meter on Ryzen AI. The design keeps a fallback for each of these, and they must be verified before v1.0 ships (see §11).
+**Not yet verified:** a laptop (Gigabyte, Ryzen AI, RTX 5070 Laptop). Untested there: NVML on a hybrid-graphics laptop, the battery discharge rate, and Energy Meter on Ryzen AI. Each of these has a fallback, and they must be verified before v1.0 ships (see §11).
 
 ## 3. Architecture
 
-Layers, each with a single job. Only `sensors/` and `ui/` touch Windows or Tk; everything else is pure Python and unit-testable on any OS.
+Layers, each with a single job. Only `sensors/`, `single_instance.py` and `ui/` touch Windows or Tk; everything else is pure Python and unit-testable on any OS. Windows DLLs are loaded inside `open()` or a function, never at import time, so every module imports on Linux.
 
 ```
 src/power_meter/
-  __main__.py          entry point; wires everything together
+  __main__.py          entry point: logging, single-instance check, wiring, main loop
+  single_instance.py   named mutex so only one copy runs
   sensors/
-    base.py            Reading dataclass + PowerSource protocol
+    base.py            Reading, BatteryReading; PowerSource, BatterySource, LoadProvider protocols
+    warn_once.py       logs a repeating sensor fault once instead of every second
     pdh.py             thin ctypes wrapper over pdh.dll (English counter names)
+    load.py            CPU utilisation and per-adapter GPU 3D utilisation from PDH
+    adapters.py        DXCore: which GPU adapters are discrete hardware
     energy_meter.py    CPU package watts (RAPL via Windows Energy Meter)
-    amd_adl.py         AMD GPU watts (ADL PMLog)
-    nvidia_nvml.py     NVIDIA GPU watts (nvidia-ml-py)
-    battery.py         laptop discharge rate (SetupAPI + IOCTL_BATTERY_*)
+    amd_adl.py         AMD GPU board power (ADL PMLog)
+    nvidia_nvml.py     NVIDIA GPU power (nvidia-ml-py)
+    battery.py         battery presence and discharge rate (SetupAPI + IOCTL_BATTERY_*)
     estimators.py      utilisation-based fallbacks for CPU and GPU
+    discovery.py       builds the source chains for this PC
   power_model.py       picks the best source per component, returns a PowerSnapshot
-  tariff.py            Standard and TOU pricing, holiday calendar
+  tariff.py            Normal and TOU pricing, holiday calendar
   meter.py             integrates watts into units (kWh) and Baht
   projection.py        monthly cost estimate
   settings.py          Settings dataclass, defaults, validation ranges
-  storage.py           config.json / state.json load + atomic save + location fallback
-  sampler.py           background thread: sample → model → meter → queue
+  storage.py           config.json / state.json load, atomic save, data-folder fallback
+  sampler.py           background thread: sample, bill, publish MeterState; commands; autosave
+  data/
+    holidays_th.json   bundled off-peak holidays
+    icon.ico           window and exe icon
   ui/
-    theme.py           design tokens (colours, type scale, spacing)
-    main_view.py
-    settings_view.py
-    widgets.py         small reusable pieces (usage bar, labelled field)
-data/holidays_th.json
+    app.py             main window: polling, view switching, theme, saving settings
+    main_view.py       main view and its view-model
+    settings_view.py   settings view
+    form.py            settings form parsing and validation (no Tk)
+    format.py          money, duration, watt and price-line text
+    theme.py           design tokens and the contrast-ratio calculation
+    widgets.py         shared widgets: buttons, segmented control, dropdown, field, scroll area
+packaging/             PyInstaller spec, Windows version resource, launcher script
 tests/
-tools/probe.py         hardware diagnostic (kept as a developer tool)
+tools/
+  sensor_check.py      prints what every power source reads on this PC
+  probe.py             earlier hardware diagnostic
 ```
 
 ### Data flow
 
 ```
 sampler thread (every 1.0 s, monotonic clock)
-  sources ──► power_model ──► PowerSnapshot(wall_w, parts[], on_battery)
-                                   │
-                                   ▼
-            meter.add(snapshot, dt, wall_clock_now) ── uses tariff.rate_at(now)
-                                   │
-                                   ▼
-                       queue.put(MeterState)  (latest only)
+  run queued commands (new settings, reset)
+  power_model.sample() ──► PowerSnapshot(wall_w, parts, on_battery, usage_label, peak_w)
+  tariff.rate_at(now)  ──► RateInfo(rate, period, next_change)
+  meter.add(wall_w, mono_s, rate)
+  publish MeterState(snapshot, totals, session, rate, status, display_w)   (latest only, under a lock)
+  every 30 s: save totals
 
 Tk main loop (after() every 250 ms)
-  queue.get_nowait() ──► views render; no calculation in the UI
+  sampler.latest() ──► build_view_model(state, settings) ──► MainView.render(view_model)
 ```
 
 - Hardware calls never run on the Tk thread, so a slow or hung driver call cannot freeze the window.
-- The UI reads only immutable `MeterState` objects. Settings changes go UI → sampler through a thread-safe `apply_settings()` call.
+- Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()` and `request_reset()`, which queue commands for the sampler's next tick.
+- `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text.
 
 ## 4. Power model
 
@@ -111,25 +123,28 @@ class Reading:
     measured: bool
 
 class PowerSource(Protocol):
-    component: Literal["cpu", "gpu", "system"]
+    component: Literal["cpu", "gpu"]
     def open(self) -> bool: ...          # False if unavailable on this PC
     def read(self) -> Reading | None: ...  # None on a transient failure
     def close(self) -> None: ...
 ```
 
+The battery is not a `PowerSource`: it replaces the whole component sum rather than one component, so `PowerModel` reads it separately.
+
 ### Selection order (chosen at startup; re-evaluated on failure)
 
-| Component | 1st choice (measured) | Fallback (estimated) |
+| Component | Measured, in order | Fallback (estimated) |
 |---|---|---|
 | CPU | Energy Meter `*_pkg` instances, summed (mW → W) | `cpu_tdp × (0.30 + 0.70 × util)` |
-| GPU | ADL (AMD) or NVML (NVIDIA); sum all discrete GPUs | `gpu_tdp × (0.10 + 0.90 × util_3d)` of the busiest discrete adapter |
-| Whole system (laptop on battery only) | battery discharge rate | n/a; use the component sum |
+| GPU | ADL (AMD), then NVML (NVIDIA); each sums all of its vendor's discrete GPUs | `gpu_tdp × (0.10 + 0.90 × util_3d)` of the busiest discrete adapter |
+| Whole laptop (on battery only) | battery discharge rate | the component sum above |
 
-- `util` is PDH `% Processor Utility / 100`, clamped to 0–1. `util_3d` is the summed 3D engine utilisation per adapter LUID, clamped to 0–1.
-- A source that fails 3 reads in a row is demoted to its fallback. Every 60 s, demoted sources are retried.
-- Sanity limits: readings below 0 W or above 1000 W are discarded as a failed read.
-- Integrated GPUs with no measured source are treated as part of the CPU package and are not estimated separately, to avoid double counting.
-- The estimate uses the busiest discrete adapter only. With several discrete GPUs and no measured GPU source, it reads low.
+- `util` is PDH `% Processor Utility / 100`, clamped to 0–1. `util_3d` is the 3D engine utilisation summed per adapter LUID (PDH lists one instance per process), clamped to 0–1.
+- Only discrete hardware adapters count towards `util_3d`. DXCore classifies the adapters once at startup (`IsHardware` and not `IsIntegrated`); an integrated GPU's power is already part of the CPU package reading, so estimating it too would count it twice. If DXCore can't classify the adapters, every adapter counts.
+- The estimate uses the busiest discrete adapter only, because summing would add an idle floor for every idle card. With several discrete GPUs and no measured GPU source, it reads low.
+- A source that fails 3 reads in a row is demoted to the next one in its chain. Every 60 s the best demoted source is retried, and promoted back if it returns a valid reading.
+- A source whose `open()`, `read()` or `close()` raises is treated as unavailable or as a failed read, and the error is logged once.
+- Sanity limits: readings below 0 W or above 1000 W are discarded as a failed read. After a failed read the last good reading is reused until the source is demoted.
 
 ### Whole-PC wall power
 
@@ -155,7 +170,7 @@ The energy drawn from the battery is paid for later, when it is recharged, so ch
 | `cpu_tdp` (fallback only) | 65 W | 45 W | 5–400 W |
 | `gpu_tdp` (fallback only) | 150 W | 100 W | 0–600 W |
 
-The desktop/laptop profile is chosen by whether a battery device exists. Every value can be changed under Advanced settings.
+The desktop/laptop profile is chosen by whether Windows reports a system battery. Every value except `η_charge` can be changed under Advanced settings; `η_charge` is read from `config.json`.
 
 ### Usage level (plain-language label)
 
@@ -182,7 +197,7 @@ If `Δt > 5 s` (system sleep, suspended thread, clock jump), the interval is ski
 
 ### Tariffs
 
-All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults use the tariff effective from the September 2026 bill (Ft = +0.1623 THB/unit). The TOU rates were confirmed against PEA's published tariff, and the normal-band rates come from the residential energy charges in effect from the September 2026 bill. Ft changes every four months, so the defaults need rechecking each time it does. The fixed monthly service charge is excluded, because it does not change with PC usage.
+All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults use the tariff effective from the September 2026 bill (Ft = +0.1623 THB/unit). The TOU rates match PEA's published tariff, and the normal-band rates come from the residential energy charges in effect from the September 2026 bill. Ft changes every four months, so the defaults need rechecking each time it does. The fixed monthly service charge is excluded, because it does not change with PC usage.
 
 **Standard (progressive) meter.** The app cannot know total household usage, so the user chooses their household band from the bill. The PC is priced at the household's **marginal** tier: switching the PC off removes units from the top tier the house reaches.
 
@@ -194,7 +209,7 @@ All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults
 | Over 400 units/month | 4.84 |
 | Custom | user value, 0.01–100 |
 
-Known limitation: if the PC's own usage pushes the house across a tier boundary, part of it is priced at the wrong tier. This is documented in the README.
+Known limitation: if the PC's own usage pushes the house across a tier boundary, part of it is priced at the wrong tier. The README lists this under its limitations.
 
 **TOU meter**
 
@@ -228,7 +243,7 @@ Goals: understandable by non-technical users, with technical detail available bu
 ### Main view
 
 ```
-Power & Cost Meter                        [theme] [settings]
+Power & Cost Meter                  Light mode   Settings
 
 You've spent
 ฿ 1.2847                                  ← primary: largest, accent green
@@ -238,7 +253,7 @@ Right now
 247 W · about ฿1.11 per hour              ← secondary: accent blue
 [usage bar]  Gaming-level use
 
-If you use your PC like this [5 ▴▾] hours a day
+If you use your PC like this [− 5 +] hours a day
 ≈ ฿166 per month
 
 ▸ Show details                            ← collapsed by default
@@ -247,21 +262,22 @@ If you use your PC like this [5 ▴▾] hours a day
     Other    25 W  estimated
     PSU loss 32 W  87% efficiency
 
-Price: Normal meter · ฿4.50 per unit · Change
-                                          [Reset]
+Price: Normal meter · ฿4.50 per unit (default)  Change
+                                                  Reset
 ```
 
 - With TOU selected, the price line reads: `TOU · Peak ฿6.38 now · Off-peak from 22:00`.
 - The total cost shows 4 decimal places. Watts are smoothed over the last 3 samples for display only; billing uses raw samples.
 - **Reset** asks for confirmation by changing to "Click again to reset" for 3 s. No modal dialog.
-- Window: fixed width 460 px. Height is set during UI build (target ≤ 560 px) to fit the content without scrolling.
+- Window: fixed at 460 × 560 px. The main view fits without scrolling with details expanded; the settings view scrolls inside the window.
+- The theme button in the header switches between dark and light at once and saves the choice. The hours stepper (1–24) saves on every change.
 
-### Settings view (replaces the main view; Back returns)
+### Settings view (replaces the main view; Cancel or Esc returns)
 
 - **Your electricity meter:** Normal / TOU (segmented button)
 - **Price per unit:** a band dropdown for Normal, or Peak/Off-peak fields for TOU. Hint: *Find "units used" on your electricity bill.*
-- **Advanced settings** (collapsed): other components W, monitor & extras W, PSU efficiency %, CPU TDP, GPU TDP. TDP fields are disabled and labelled "measured — not used" when a measured source is active.
-- **Theme:** Dark / Light (applies instantly)
+- **Advanced settings** (collapsed): other components W, monitor & extras W, PSU efficiency %, CPU TDP, GPU TDP. TDP fields are disabled and labelled "measured — not used" when a measured source is active. Also shows the data folder in use.
+- **Theme:** Dark / Light (previews at once; Cancel restores the previous theme)
 - **Cancel** / **Save**. Save is disabled while any field is invalid. Invalid fields get a red border and a one-line reason below.
 
 ### States
@@ -286,7 +302,7 @@ Price: Normal meter · ฿4.50 per unit · Change
 | accent power | `#3498DB` (5.4:1) | `#1F6FA8` (5.0:1) |
 | error | `#FF6B6B` | `#C0392B` |
 
-The light-mode accents were darkened from the original palette's `#27AE60`/`#2980B9`, which measured 2.7:1 and 4.0:1 against the background. Final surface and text values are confirmed with a contrast check during the UI build.
+The light-mode accents are darker than the original palette's `#27AE60`/`#2980B9`, which measure 2.7:1 and 4.0:1 against the background. Ratios are against the background; `tests/test_theme.py` checks every text colour against both background and surface. The focus ring uses the power accent.
 
 - **Type:** one family (Segoe UI, the Windows system font). Scale: 40 (cost), 22 (watts), 13 (body), 11 (captions). The cost uses tabular figures where available, so digits don't jitter.
 - **Spacing:** 4-px grid (8 / 12 / 16 / 24). One corner radius (8 px). No gradients, glow, or emoji.
@@ -296,8 +312,8 @@ The light-mode accents were darkened from the original palette's `#27AE60`/`#298
 
 Two files in the same folder:
 
-- `config.json`: user settings, written only on Save.
-- `state.json`: accumulated cost, energy, and elapsed time. Written every 30 s and on close.
+- `config.json`: user settings. Written when settings are saved, when the theme button is used, and when the hours stepper changes.
+- `state.json`: accumulated cost, energy, and elapsed time. Written every 30 s, right after a reset, and on close.
 
 **Location:** the folder containing the `.exe` (`sys.executable` when frozen, not the PyInstaller temp folder). If that folder is not writable, use `%APPDATA%\PCPowerCostMeter\`. The resolved location is shown under Advanced settings.
 
@@ -312,14 +328,16 @@ Two files in the same folder:
 ## 8. Error handling
 
 - Every sensor `open()`/`read()` catches its own `OSError`/`ctypes` errors, logs once per distinct error, and returns `None`/`False`. Nothing is swallowed silently without a log line.
-- An unexpected exception in the sampler thread is logged. The sampler restarts after 5 s, and the UI shows "Measurement paused — restarting" until fresh data arrives.
+- The source chain in `power_model.py` also catches anything else a source raises, so one faulty driver demotes that source instead of stopping the meter.
+- An unexpected exception in a sampler tick is logged. The sampler tries again after 5 s, and the UI shows "Measurement paused — restarting" until fresh data arrives.
+- An error in a Tk callback is logged instead of printed, since the packaged app has no console.
 - On close, sources are closed (`nvmlShutdown`, `ADL2_Main_Control_Destroy`, `PdhCloseQuery`) and state is saved.
 
 ## 9. Dependencies
 
 | Package | Why | Notes |
 |---|---|---|
-| `customtkinter` 6.0.x | Themed Tk widgets with built-in dark/light modes; small footprint, and bundles cleanly with PyInstaller | Major version 6; confirm API differences from 5.x before building UI |
+| `customtkinter` 6.x | Themed Tk widgets with built-in dark/light modes; small footprint, and bundles cleanly with PyInstaller | Pinned to major version 6 (`>=6.0,<7`) |
 | `nvidia-ml-py` | Official NVIDIA bindings for NVML | Pure Python; imported lazily so it is optional at runtime |
 | dev: `pytest`, `ruff`, `mypy`, `pyinstaller` 6.22+ | Test, lint, type-check, build | PyInstaller 6.22 supports Python 3.15 |
 
@@ -331,11 +349,11 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 
 ## 10. Build, test, release
 
-- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, PSU math, battery path, sanity limits); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation). Sensors are tested with fake sources.
+- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast). Sensors are tested against fake DLL objects, so the suite runs on Linux.
 - **Hardware smoke test:** `tools/probe.py` plus a manual checklist run on the desktop and the laptop before each release.
-- **CI (GitHub Actions, `windows-latest`):** `ruff check`, `mypy --strict src`, `pytest` on every push and PR.
+- **CI (GitHub Actions, `windows-latest`, Python 3.13 and 3.15):** `ruff check .`, `mypy` (strict, configured in `pyproject.toml`), `pytest` on every push and PR.
 - **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.
-- **Repo files:** `README.md` (features, privacy, formula, limitations, how to run, Defender false-positive guidance, MIT disclaimer), `LICENSE`, `.gitignore`, `pyproject.toml`, screenshots (dark and light), and this spec.
+- **Repo files:** `README.md` (features, privacy, formula, limitations, how to run, SmartScreen and antivirus guidance, MIT disclaimer), `LICENSE`, `.gitignore`, `pyproject.toml`, and this document.
 - **Antivirus:** unsigned PyInstaller one-file builds can trigger false positives. Mitigations: CI-built and reproducible, no UPX, published hashes, and submission to Microsoft for analysis if flagged. Code signing is out of scope.
 
 ## 11. Open items and risks
