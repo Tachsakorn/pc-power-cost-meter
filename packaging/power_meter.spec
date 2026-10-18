@@ -1,10 +1,12 @@
-# Build from the repository root after `pip install .`:
-#     pyinstaller packaging/power_meter.spec
-# The package must be installed so that its data files (holiday list, icon) can be collected.
+# Build from the repository root after `pip install -e ".[dev]"`:
+#     pyinstaller packaging\power_meter.spec
 
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
+
+# Fails fast if the package isn't installed; its data files could not be collected otherwise.
+import power_meter  # noqa: F401
 
 here = Path(SPECPATH)
 icon = here.parent / "src" / "power_meter" / "data" / "icon.ico"

@@ -44,7 +44,7 @@ A throwaway probe (`tools/probe.py`) was run on the owner's desktop: Ryzen 5 560
 | NVML | Not present on desktop | n/a | n/a |
 | Battery IOCTL | No battery on desktop | n/a | n/a |
 
-**Sensor #73 has not been confirmed as a documented name.** It was identified because it tracks GPU activity and matches RX 7600's ~165 W board power. Its official enum name must be confirmed from the ADL SDK header during implementation.
+**Sensor #73 is `PMLOG_BOARD_POWER`** (total board power in watts), as defined in the ADL SDK's `adl_defines.h`. It was first spotted because it tracks GPU activity and matches the RX 7600's ~165 W board power, and the desktop sensor check measured the GPU through it.
 
 **Not yet verified:** the laptop (Gigabyte, Ryzen AI, RTX 5070 Laptop). Untested there: NVML on a hybrid-graphics laptop, the battery discharge rate, and Energy Meter on Ryzen AI. The design keeps a fallback for each of these, and they must be verified before v1.0 ships (see §11).
 
@@ -182,7 +182,7 @@ If `Δt > 5 s` (system sleep, suspended thread, clock jump), the interval is ski
 
 ### Tariffs
 
-All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults use the tariff effective from the September 2026 bill (Ft = +0.1623 THB/unit) and must be confirmed against MEA/PEA before release. The fixed monthly service charge is excluded, because it does not change with PC usage.
+All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults use the tariff effective from the September 2026 bill (Ft = +0.1623 THB/unit). The TOU rates were confirmed against PEA's published tariff, and the normal-band rates come from the residential energy charges in effect from the September 2026 bill. Ft changes every four months, so the defaults need rechecking each time it does. The fixed monthly service charge is excluded, because it does not change with PC usage.
 
 **Standard (progressive) meter.** The app cannot know total household usage, so the user chooses their household band from the bill. The PC is priced at the household's **marginal** tier: switching the PC off removes units from the top tier the house reaches.
 
@@ -286,7 +286,7 @@ Price: Normal meter · ฿4.50 per unit · Change
 | accent power | `#3498DB` (5.4:1) | `#1F6FA8` (5.0:1) |
 | error | `#FF6B6B` | `#C0392B` |
 
-The light-mode accents were darkened from the brief's `#27AE60`/`#2980B9`, which measured 2.7:1 and 4.0:1 against the background. Final surface and text values are confirmed with a contrast check during the UI build.
+The light-mode accents were darkened from the original palette's `#27AE60`/`#2980B9`, which measured 2.7:1 and 4.0:1 against the background. Final surface and text values are confirmed with a contrast check during the UI build.
 
 - **Type:** one family (Segoe UI, the Windows system font). Scale: 40 (cost), 22 (watts), 13 (body), 11 (captions). The cost uses tabular figures where available, so digits don't jitter.
 - **Spacing:** 4-px grid (8 / 12 / 16 / 24). One corner radius (8 px). No gradients, glow, or emoji.
@@ -319,7 +319,7 @@ Two files in the same folder:
 
 | Package | Why | Notes |
 |---|---|---|
-| `customtkinter` 6.0.x | UI toolkit required by the brief | Major version 6; confirm API differences from 5.x before building UI |
+| `customtkinter` 6.0.x | Themed Tk widgets with built-in dark/light modes; small footprint, and bundles cleanly with PyInstaller | Major version 6; confirm API differences from 5.x before building UI |
 | `nvidia-ml-py` | Official NVIDIA bindings for NVML | Pure Python; imported lazily so it is optional at runtime |
 | dev: `pytest`, `ruff`, `mypy`, `pyinstaller` 6.22+ | Test, lint, type-check, build | PyInstaller 6.22 supports Python 3.15 |
 
@@ -342,9 +342,9 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 
 | # | Item | Resolve by |
 |---|---|---|
-| 1 | Confirm ADL sensor #73's documented name; confirm the index is stable on other RDNA GPUs | Implementation (ADL SDK header) |
+| 1 | ADL sensor #73 is `PMLOG_BOARD_POWER` (confirmed from `adl_defines.h`); confirm it is reported on other RDNA GPUs | Testing on other AMD cards |
 | 2 | Laptop: NVML power on RTX 5070 Laptop; whether polling NVML keeps the dGPU awake (hybrid graphics) | Laptop probe before v1.0 |
 | 3 | Laptop: battery discharge rate readable as a standard user; Energy Meter on Ryzen AI | Laptop probe before v1.0 |
 | 4 | 2027 holidays are derived from the off-peak rule and the Bank of Thailand 2027 holiday notice; check them against the PEA/MEA 2027 off-peak calendar once it is published. The ERC can also reclassify individual days (as it did for the postponed Songkran in 2020) | Before v1.0 and each January |
 | 5 | AMD RAPL package power is self-reported by the CPU and may differ from external measurement | Documented limitation |
-| 6 | CI runner support for Python 3.15; fall back to 3.14 in CI if needed | First CI run |
+| 6 | CI runner support for Python 3.15: `actions/setup-python` provides 3.15.0, so CI tests 3.13 and 3.15 | First CI run |
