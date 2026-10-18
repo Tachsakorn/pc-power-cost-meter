@@ -134,6 +134,7 @@ BAR_H: Final = 3
 HAIR_SPACE: Final = "\u200a"
 
 STATUS_ROW, GAUGE_ROW, DETAILS_ROW = 0, 1, 8
+ROW_COUNT: Final = 11
 
 
 def spaced(caption: str) -> str:
@@ -451,6 +452,9 @@ class MainView:
     def _render_details(self, rows: tuple[DetailRow, ...]) -> None:
         if [r.label for r in rows] != [cells.name.cget("text") for cells in self._detail_cells]:
             self._rebuild_detail_rows([r.label for r in rows])
+            if self._visible:
+                self._stage.update_idletasks()
+                self._stage.refresh_backdrop()
         for cells, detail in zip(self._detail_cells, rows, strict=True):
             set_text(cells.watts, detail.watts)
             set_text(cells.detail, detail.detail)

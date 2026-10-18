@@ -164,6 +164,24 @@ def test_detail_rows_are_rebuilt_when_the_parts_change(stage: Stage) -> None:
     assert [cells.name.cget("text") for cells in view._detail_cells] == ["Battery"]
 
 
+def test_new_detail_rows_refresh_the_backdrop_while_shown(
+    stage: Stage, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    view = make_view(stage)
+    refreshes: list[None] = []
+    monkeypatch.setattr(stage, "refresh_backdrop", lambda: refreshes.append(None))
+    battery = replace(BASE, details=(DetailRow("Battery", "30 W", "measured", True, 1.0),))
+
+    view.render(battery)
+    assert len(refreshes) == 1
+    view.render(battery)
+    assert len(refreshes) == 1
+
+    view.hide()
+    view.render(BASE)
+    assert len(refreshes) == 1
+
+
 def test_hide_disarms_reset(stage: Stage) -> None:
     view = make_view(stage)
     view._reset_button.invoke()

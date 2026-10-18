@@ -17,8 +17,10 @@ from power_meter.sensors.base import Component
 from power_meter.settings import Settings
 from power_meter.tariff import HolidayCalendar, tariff_from_settings
 from power_meter.ui import theme
-from power_meter.ui.main_view import MainView, build_view_model
+from power_meter.ui.main_view import ROW_COUNT, MainView, build_view_model
 from power_meter.ui.scene.art import SceneArt
+from power_meter.ui.scene.motion import windows_animations_enabled
+from power_meter.ui.scene.state import StateTracker, caption, describe
 from power_meter.ui.settings_view import SettingsView
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import Palette
@@ -27,8 +29,7 @@ from power_meter.ui.widgets import CONTROL_H, Button, Painter, label
 type Theme = Literal["dark", "light"]
 
 TITLE: Final = "PC Power & Cost Meter"
-# The main view needs about 552 px with details expanded; Settings scrolls inside this.
-WIDTH, HEIGHT = 460, 560
+WIDTH, HEIGHT = 760, 600
 POLL_MS: Final = 250
 NO_DATA_DIR: Final = "None — no writable folder on this PC"
 
@@ -82,6 +83,7 @@ class App(ctk.CTk):
         self._on_close = on_close
         self._save_failed = False
         self._settings_view: SettingsView | None = None
+        self._tracker = StateTracker()
 
         self.title(TITLE)
         set_window_icon(self)
@@ -94,7 +96,9 @@ class App(ctk.CTk):
 
         palette = palette_for(settings.theme)
         self.configure(fg_color=palette.background)
-        self._stage = Stage(self, palette, settings.theme == "light", SceneArt.bundled())
+        self._stage = Stage(
+            self, palette, daylight=settings.theme == "light", art=SceneArt.bundled()
+        )
         self._stage.pack(fill="both", expand=True)
         self._main_view = MainView(
             self._stage,
@@ -104,6 +108,7 @@ class App(ctk.CTk):
             on_toggle_theme=self._toggle_theme,
             on_hours_change=self._hours_changed,
         )
+        self._stage.set_animate(windows_animations_enabled())
         self._stage.start()
         self._poll_job = self.after_idle(self._poll)
 
@@ -118,8 +123,10 @@ class App(ctk.CTk):
         self._poll_job = self.after(POLL_MS, self._poll)
         can_save = self._data_dir is not None and not self._save_failed
         rate = self._tariff.rate_at(datetime.now())
-        vm = build_view_model(self._sampler.latest(), self._settings, rate, can_save=can_save)
-        self._main_view.render(vm)
+        state = self._sampler.latest()
+        self._main_view.render(build_view_model(state, self._settings, rate, can_save=can_save))
+        scene = self._tracker.update(state)
+        self._stage.show_scene(scene, caption(scene), describe(scene, state.snapshot))
 
     def _use_settings(self, settings: Settings) -> None:
         self._settings = settings
@@ -138,10 +145,11 @@ class App(ctk.CTk):
         ctk.set_appearance_mode(name)
         palette = palette_for(name)
         self.configure(fg_color=palette.background)
-        self._stage.set_theme(palette, name == "light")
+        self._stage.set_theme(palette, daylight=name == "light")
         self._main_view.apply_palette(palette)
         if self._settings_view is not None:
             self._settings_view.apply_palette(palette)
+        self._refresh_backdrop()
 
     def _toggle_theme(self) -> None:
         name: Theme = "light" if self._settings.theme == "dark" else "dark"
@@ -155,7 +163,7 @@ class App(ctk.CTk):
         if self._settings_view is not None:
             return
         self._settings_view = SettingsView(
-            self,
+            self._stage,
             palette_for(self._settings.theme),
             self._settings,
             str(self._data_dir) if self._data_dir is not None else NO_DATA_DIR,
@@ -165,19 +173,24 @@ class App(ctk.CTk):
             on_theme_change=self._apply_theme,
         )
         self._main_view.hide()
-        self._stage.pack_forget()
-        self._settings_view.pack(fill="both", expand=True)
+        self._settings_view.grid(row=0, column=1, rowspan=ROW_COUNT, sticky="nsew")
         # Focus the view itself so the next Tab lands on its first control.
         self._settings_view.focus_set()
+        self._refresh_backdrop()
 
     def _close_settings(self) -> None:
         if self._settings_view is None:
             return
         self._settings_view.destroy()
         self._settings_view = None
-        self._stage.pack(fill="both", expand=True)
         self._main_view.show()
         self._stage.focus_set()
+        self._refresh_backdrop()
+
+    def _refresh_backdrop(self) -> None:
+        # The backdrop keeps clear of the widgets' boxes, so it needs the settled layout.
+        self.update_idletasks()
+        self._stage.refresh_backdrop()
 
     def _settings_saved(self, settings: Settings) -> None:
         # Leaving the view first means a held Enter can't save the form again.
