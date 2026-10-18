@@ -166,6 +166,19 @@ def test_unavailable_when_adl_cannot_load(monkeypatch: pytest.MonkeyPatch) -> No
     assert not AdlGpu().open()
 
 
+def test_load_failure_logs_the_windows_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def fail() -> None:
+        missing = FileNotFoundError("Could not find module 'atiadlxx.dll'")
+        raise OSError("Failed to load dynlib/dll 'atiadlxx.dll'") from missing
+
+    monkeypatch.setattr("power_meter.sensors.amd_adl._load_adl", fail)
+    with caplog.at_level(logging.WARNING):
+        assert not AdlGpu().open()
+    assert caplog.messages == ["AMD ADL unavailable: Could not find module 'atiadlxx.dll'"]
+
+
 def test_close_destroys_context_once() -> None:
     dll = rx7600()
     gpu = AdlGpu(dll)

@@ -130,7 +130,9 @@ class AdlGpu:
             try:
                 self._dll = _load_adl()
             except (OSError, AttributeError) as exc:
-                self._warn("AMD ADL unavailable: %s", exc)
+                # The packaged exe re-raises a failed DLL load with a hint about missing bundled
+                # files, which is wrong for a driver DLL; the Windows error is the useful part.
+                self._warn("AMD ADL unavailable: %s", exc.__cause__ or exc)
                 return False
         # ADL calls back into this allocator for as long as the context exists.
         malloc = _Malloc(self._allocate)
