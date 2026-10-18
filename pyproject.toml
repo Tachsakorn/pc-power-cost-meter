@@ -21,7 +21,12 @@ version = {attr = "power_meter.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-power_meter = ["data/holidays_th.json", "data/icon.ico"]
+power_meter = [
+    "data/holidays_th.json",
+    "data/icon.ico",
+    "data/scene/*.png",
+    "data/scene/paths.json",
+]
 
 [tool.ruff]
 line-length = 100
