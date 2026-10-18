@@ -79,21 +79,25 @@ Under **Settings → Your electricity meter**, choose **Normal** or **TOU**.
   any rate in baht per unit.
 - **TOU:** enter your peak and off-peak rates.
 
-All prices are *all-in* baht per unit (kWh): energy charge plus the Ft adjustment, plus 7% VAT.
+All prices are *all-in* baht per unit (kWh): the energy charge plus the Ft adjustment, plus 7% VAT.
 The fixed monthly service charge is left out because it does not change with PC use.
 
-| Option | Default (฿/unit) |
-|---|---|
-| Normal, I don't know | 4.50 |
-| Normal, up to 150 units a month | 3.38 |
-| Normal, 151–400 units a month | 4.62 |
-| Normal, over 400 units a month | 4.84 |
-| TOU peak | 6.38 |
-| TOU off-peak | 3.00 |
+The defaults come from the MEA/PEA residential tariff for bills from September 2026, with
+Ft = +0.1623 ฿/unit (September–December 2026 billing period):
 
-The defaults use the Ft rate for bills from September 2026 (+0.1623 ฿/unit). Ft is revised every
-four months and the app never updates prices by itself, so check them against your latest bill.
-For example, the TOU peak default is (5.7982 + 0.1623) × 1.07 ≈ 6.38 ฿/unit.
+| Option in the app | Tariff tier used | Energy charge | + Ft | × 1.07 VAT = default |
+|---|---|---|---|---|
+| Normal, up to 150 units a month | 26–200 units | 3.0000 | 3.1623 | 3.38 |
+| Normal, 151–400 units a month | 201–400 units | 4.1584 | 4.3207 | 4.62 |
+| Normal, over 400 units a month | over 400 units | 4.3583 | 4.5206 | 4.84 |
+| TOU peak | peak | 5.7982 | 5.9605 | 6.38 |
+| TOU off-peak | off-peak | 2.6369 | 2.7992 | 3.00 |
+
+"I don't know" uses 4.50, a rounded figure between the bands rather than a rate from the tariff
+table.
+
+Ft is revised every four months and the app never updates prices by itself, so check these
+against your latest bill and change them in Settings when they differ.
 
 ## How the numbers are calculated
 
