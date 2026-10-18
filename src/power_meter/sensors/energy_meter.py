@@ -4,10 +4,11 @@ from collections.abc import Callable, Mapping
 from typing import Final
 
 from power_meter.sensors.base import Component, Reading
-from power_meter.sensors.pdh import PdhQuery
+from power_meter.sensors.pdh import PdhNoData, PdhQuery
 from power_meter.sensors.warn_once import WarnOnce
 
 ENERGY_METER_POWER: Final = r"\Energy Meter(*)\Power"
+LAST_READING_MAX_AGE_S: Final = 5.0
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,17 @@ class EnergyMeterCpu:
 
     component: Component = "cpu"
 
-    def __init__(self, query_factory: Callable[[], PdhQuery] = PdhQuery) -> None:
+    def __init__(
+        self,
+        query_factory: Callable[[], PdhQuery] = PdhQuery,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._query_factory = query_factory
+        self._clock = clock
         self._query: PdhQuery | None = None
         self._counter = 0
+        self._last: Reading | None = None
+        self._last_at = 0.0
         self._warn = WarnOnce(logger)
 
     def open(self) -> bool:
@@ -52,6 +60,7 @@ class EnergyMeterCpu:
             return False
         self._query = query
         self._counter = counter
+        self._remember(watts)
         return True
 
     def read(self) -> Reading | None:
@@ -60,15 +69,30 @@ class EnergyMeterCpu:
         try:
             self._query.collect()
             watts = sum_package_watts(self._query.values(self._counter))
+        except PdhNoData as exc:
+            # One round without data must not count towards demoting the meter.
+            logger.debug("Energy Meter had no data this round: %s", exc)
+            return self._recent_reading()
         except OSError as exc:
             self._warn("Energy Meter read failed: %s", exc)
             return None
         if watts is None:
             self._warn("Energy Meter stopped reporting a CPU package instance")
             return None
-        return Reading(watts, "Energy Meter (RAPL)", measured=True)
+        return self._remember(watts)
 
     def close(self) -> None:
         if self._query is not None:
             self._query.close()
             self._query = None
+        self._last = None
+
+    def _remember(self, watts: float) -> Reading:
+        self._last = Reading(watts, "Energy Meter (RAPL)", measured=True)
+        self._last_at = self._clock()
+        return self._last
+
+    def _recent_reading(self) -> Reading | None:
+        if self._last is None or self._clock() - self._last_at > LAST_READING_MAX_AGE_S:
+            return None
+        return self._last

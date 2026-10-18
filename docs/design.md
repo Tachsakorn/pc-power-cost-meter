@@ -145,7 +145,7 @@ The battery is not a `PowerSource`: it replaces the whole component sum rather t
 - A source that fails 3 reads in a row is demoted to the next one in its chain. Every 60 s the best demoted source is retried, and promoted back if it returns a valid reading.
 - A source whose `open()`, `read()` or `close()` raises is treated as unavailable or as a failed read, and the error is logged once.
 - Sanity limits: readings below 0 W or above 1000 W are discarded as a failed read. After a failed read the last good reading is reused until the source is demoted.
-- PDH rate counters have no valid value for a round in which one of their instances appears, exits or restarts (`PDH_NO_DATA`, `PDH_CALC_NEGATIVE_*`, `PDH_INVALID_DATA`, `PDH_CSTATUS_INVALID_DATA`). GPU Engine instances belong to processes, so this happens whenever a game starts or crashes. Such a round is not logged as a failure: each utilisation value keeps its last reading, and is cleared after 5 refreshes in a row without a new one so the estimators never run on stale load.
+- PDH rate counters have no valid value for a round in which one of their instances appears, exits or restarts (`PDH_NO_DATA`, `PDH_CALC_NEGATIVE_*`, `PDH_INVALID_DATA`, `PDH_CSTATUS_INVALID_DATA`). GPU Engine instances belong to processes, so this happens whenever a game starts or crashes. Such a round is not logged as a failure: each utilisation value keeps its last reading, and is cleared after 5 refreshes in a row without a new one so the estimators never run on stale load. The Energy Meter returns its last reading if it is at most 5 s old, so a single empty round never demotes RAPL.
 
 ### Whole-PC wall power
 
