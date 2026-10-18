@@ -51,6 +51,7 @@ class MainViewModel:
     """Everything the main view shows, already formatted."""
 
     status: str
+    live: bool
     watts: str
     load: str
     gauge_fraction: float
@@ -103,6 +104,7 @@ def build_view_model(
 
     return MainViewModel(
         status=notice or MEASURING,
+        live=state.status == "running" and snap is not None,
         watts=power,
         load=load,
         gauge_fraction=fraction,
@@ -193,7 +195,9 @@ class MainView:
 
         status = self._row_frame(STATUS_ROW, pady=(L, S))
         status.grid_columnconfigure(1, weight=1)
-        label(self._painter, status, "●", self._font_caption, "accent").grid(row=0, column=0)
+        self._dot_role = "accent"
+        self._status_dot = label(self._painter, status, "●", self._font_caption, self._dot_role)
+        self._status_dot.grid(row=0, column=0)
         self._status = label(self._painter, status, "", self._font_body, "text_muted")
         self._status.grid(row=0, column=1, sticky="w", padx=(S, 0))
         self._theme_button = self._hinted_button(status, "", on_toggle_theme)
@@ -291,6 +295,11 @@ class MainView:
 
     def render(self, vm: MainViewModel) -> None:
         set_text(self._status, vm.status)
+        set_text(self._status_dot, "●" if vm.live else "○")
+        dot_role = "accent" if vm.live and vm.notice is None else "text_muted"
+        if dot_role != self._dot_role:
+            self._dot_role = dot_role
+            self._painter.paint(self._status_dot, text_color=dot_role)
         set_text(self._watts, vm.watts)
         set_text(self._load, vm.load)
         set_text(self._zero, "0" if vm.peak else "")

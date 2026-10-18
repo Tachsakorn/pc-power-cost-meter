@@ -5,7 +5,7 @@ import pytest
 
 from power_meter.meter import Totals
 from power_meter.power_model import Part, PowerSnapshot
-from power_meter.sampler import MeterState
+from power_meter.sampler import MeterState, Status
 from power_meter.settings import MeterType, default_settings
 from power_meter.tariff import Period, RateInfo
 from power_meter.ui.main_view import DetailRow, build_view_model
@@ -224,3 +224,14 @@ def test_no_estimates_notice_on_battery() -> None:
     )
 
     assert build_view_model(replace(RUNNING, snapshot=battery), SETTINGS, FLAT).notice is None
+
+
+def test_status_is_live_while_running() -> None:
+    assert build_view_model(RUNNING, SETTINGS, FLAT).live is True
+
+
+@pytest.mark.parametrize("status", ["restarting", "warming_up"])
+def test_status_is_not_live_without_a_running_sampler(status: Status) -> None:
+    state = replace(RUNNING, status=status)
+
+    assert build_view_model(state, SETTINGS, FLAT).live is False

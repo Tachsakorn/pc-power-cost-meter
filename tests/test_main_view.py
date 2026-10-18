@@ -10,13 +10,14 @@ from PIL import Image
 
 from power_meter.ui import main_view
 from power_meter.ui.gauge import render_gauge
-from power_meter.ui.main_view import DetailRow, MainView, MainViewModel
+from power_meter.ui.main_view import ESTIMATES_ONLY, RESTARTING, DetailRow, MainView, MainViewModel
 from power_meter.ui.scene.art import SceneArt
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import DARK, LIGHT
 
 BASE = MainViewModel(
     status="Measuring",
+    live=True,
     watts="56",
     load="Light use",
     gauge_fraction=0.2,
@@ -193,6 +194,24 @@ def test_hiding_the_dashboard_removes_the_hint(stage: Stage) -> None:
     view.hide()
 
     assert hint_texts(stage) == []
+
+
+def status_dot(view: MainView) -> tuple[str, str]:
+    return view._status_dot.cget("text"), view._status_dot.cget("text_color")
+
+
+def test_status_dot_is_muted_while_a_notice_is_shown(stage: Stage) -> None:
+    view = make_view(stage)
+    assert status_dot(view) == ("●", DARK.accent)
+
+    view.render(replace(BASE, status=ESTIMATES_ONLY, notice=ESTIMATES_ONLY))
+    assert status_dot(view) == ("●", DARK.text_muted)
+
+    view.render(replace(BASE, status=RESTARTING, notice=RESTARTING, live=False))
+    assert status_dot(view) == ("○", DARK.text_muted)
+
+    view.render(BASE)
+    assert status_dot(view) == ("●", DARK.accent)
 
 
 def test_dashboard_follows_a_scaling_change(
