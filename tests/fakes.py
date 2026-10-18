@@ -7,10 +7,16 @@ from power_meter.sensors.pdh import CounterValueItem
 
 
 class FakeSource:
-    """Returns the given readings in order, then keeps repeating the last one."""
+    """Returns the given readings in order, then keeps repeating the last one.
+
+    An exception in `readings` or as `opens` is raised instead of returned.
+    """
 
     def __init__(
-        self, component: Component, readings: list[Reading | None], opens: bool = True
+        self,
+        component: Component,
+        readings: list[Reading | Exception | None],
+        opens: bool | Exception = True,
     ) -> None:
         self.component = component
         self.readings = list(readings)
@@ -21,13 +27,19 @@ class FakeSource:
 
     def open(self) -> bool:
         self.open_calls += 1
+        if isinstance(self.opens, Exception):
+            raise self.opens
         return self.opens
 
     def read(self) -> Reading | None:
         self.read_calls += 1
         if len(self.readings) > 1:
-            return self.readings.pop(0)
-        return self.readings[0] if self.readings else None
+            reading = self.readings.pop(0)
+        else:
+            reading = self.readings[0] if self.readings else None
+        if isinstance(reading, Exception):
+            raise reading
+        return reading
 
     def close(self) -> None:
         self.close_calls += 1

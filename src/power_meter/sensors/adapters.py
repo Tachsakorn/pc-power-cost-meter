@@ -68,7 +68,7 @@ def discrete_gpu_luids(dll: object | None = None) -> frozenset[str] | None:
     """LUID keys of discrete hardware GPUs, or None when DXCore can't tell."""
     try:
         adapters = _list_adapters(dll if dll is not None else _load_dxcore())
-    except (OSError, AttributeError) as exc:
+    except Exception as exc:  # a bad COM pointer raises ValueError; startup must go on regardless
         logger.warning("Can't classify GPU adapters with DXCore: %s", exc)
         return None
     return discrete_luids(adapters)

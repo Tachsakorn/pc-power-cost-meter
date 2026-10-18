@@ -146,6 +146,59 @@ def test_failed_retry_waits_another_interval() -> None:
     assert broken.open_calls == 3
 
 
+def test_raising_read_counts_as_failed_read(caplog: pytest.LogCaptureFixture) -> None:
+    broken = FakeSource("cpu", [measured(50), OSError("driver reset")])
+    model = make_model(cpu=[broken, estimate("cpu", 30)])
+    with caplog.at_level(logging.WARNING):
+        watts = [part_watts(model.sample(), "CPU") for _ in range(FAILS_BEFORE_DEMOTE + 2)]
+    assert watts == [50, 50, 50, 30, 30]
+    assert broken.read_calls == FAILS_BEFORE_DEMOTE + 1
+    assert broken.close_calls == 1
+    assert caplog.text.count("driver reset") == 1
+    assert "demoted" in caplog.text
+
+
+def test_raising_first_read_uses_next_source() -> None:
+    model = make_model(cpu=[FakeSource("cpu", [RuntimeError("bad buffer")]), estimate("cpu", 30)])
+    assert part_watts(model.sample(), "CPU") == 30
+
+
+def test_raising_open_uses_next_source(caplog: pytest.LogCaptureFixture) -> None:
+    broken = FakeSource("cpu", [measured(80)], opens=OSError("no driver"))
+    with caplog.at_level(logging.WARNING):
+        model = make_model(cpu=[broken, FakeSource("cpu", [measured(42)]), estimate("cpu", 30)])
+    assert part_watts(model.sample(), "CPU") == 42
+    assert broken.read_calls == 0
+    assert "no driver" in caplog.text
+
+
+def test_raising_retry_keeps_the_fallback() -> None:
+    clock = FakeClock()
+    broken = FakeSource("cpu", [None, None, None, OSError("still broken")])
+    model = make_model(cpu=[broken, estimate("cpu", 30)], clock=clock)
+    for _ in range(FAILS_BEFORE_DEMOTE):
+        model.sample()
+    clock.now = RETRY_DEMOTED_S
+    assert part_watts(model.sample(), "CPU") == 30
+    assert broken.open_calls == 2
+    assert broken.close_calls == 2
+
+
+class UnclosableSource(FakeSource):
+    def close(self) -> None:
+        super().close()
+        raise OSError("handle already gone")
+
+
+def test_raising_close_still_demotes() -> None:
+    broken = UnclosableSource("cpu", [None])
+    model = make_model(cpu=[broken, estimate("cpu", 30)])
+    for _ in range(FAILS_BEFORE_DEMOTE):
+        model.sample()
+    assert part_watts(model.sample(), "CPU") == 30
+    assert broken.close_calls == 1
+
+
 def test_out_of_range_reading_is_failure() -> None:
     spiking = FakeSource("cpu", [Reading(1500, "Meter", True)])
     model = make_model(cpu=[spiking, estimate("cpu", 30)])

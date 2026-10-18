@@ -16,6 +16,13 @@ class FailingDxcore:
         return E_NOINTERFACE
 
 
+class NullFactoryDxcore:
+    """Reports success but hands back no factory, so the first COM call dereferences NULL."""
+
+    def DXCoreCreateAdapterFactory(self, riid: object, factory: object) -> int:
+        return 0
+
+
 def test_luid_key_is_high_then_low_part() -> None:
     assert luid_key(high=0, low=0x15061) == "0x00000000_0x00015061"
     assert luid_key(high=1, low=0xD1A6) == "0x00000001_0x0000d1a6"
@@ -50,3 +57,12 @@ def test_none_when_dxcore_lacks_the_factory_export() -> None:
 def test_none_when_dxcore_cannot_load(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.platform", "linux")
     assert discrete_gpu_luids() is None
+
+
+def test_none_when_a_com_call_raises(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("sys.platform", "win32")
+    with caplog.at_level(logging.WARNING):
+        assert discrete_gpu_luids(NullFactoryDxcore()) is None
+    assert len(caplog.records) == 1

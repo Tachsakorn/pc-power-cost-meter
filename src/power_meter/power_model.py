@@ -6,6 +6,7 @@ from typing import Final, TypeGuard
 
 from power_meter.sensors.base import BatterySource, Component, PowerSource, Reading
 from power_meter.sensors.estimators import CpuEstimate, GpuEstimate
+from power_meter.sensors.warn_once import WarnOnce
 from power_meter.settings import Settings
 
 FAILS_BEFORE_DEMOTE: Final = 3
@@ -53,11 +54,16 @@ def _source_name(source: PowerSource) -> str:
 
 
 class _SourceChain:
-    """Sources for one component, best first, with an estimator last."""
+    """Sources for one component, best first, with an estimator last.
+
+    A source that raises is treated like one that is unavailable or returned no reading, so a
+    driver fault demotes it instead of stopping the sampler.
+    """
 
     def __init__(self, component: Component, sources: Sequence[PowerSource]) -> None:
         self._component = component
         self.sources = sources
+        self._warn = WarnOnce(logger)
         self._opened: set[int] = set()
         self._unavailable: set[int] = set()
         self._demoted: set[int] = set()
@@ -76,11 +82,11 @@ class _SourceChain:
 
     def close(self) -> None:
         for index in self._opened:
-            self.sources[index].close()
+            self._close(index)
         self._opened.clear()
 
     def _read_active(self, now: float) -> Reading | None:
-        reading = self.sources[self._active].read()
+        reading = self._read(self._active)
         if _is_valid(reading):
             self._fails = 0
             return reading
@@ -95,13 +101,13 @@ class _SourceChain:
 
     def _read_fallback(self) -> Reading | None:
         for index in range(self._active + 1, len(self.sources)):
-            if self._ensure_open(index) and _is_valid(reading := self.sources[index].read()):
+            if self._ensure_open(index) and _is_valid(reading := self._read(index)):
                 return reading
         return None
 
     def _demote(self, now: float) -> None:
         old = self._active
-        self.sources[old].close()
+        self._close(old)
         self._opened.discard(old)
         self._next_retry = now + RETRY_DEMOTED_S
         self._demoted.add(old)
@@ -123,17 +129,16 @@ class _SourceChain:
             return None
         self._next_retry = now + RETRY_DEMOTED_S
         index = min(candidates)
-        source = self.sources[index]
-        if not source.open():
+        if not self._open(index):
             return None
-        reading = source.read()
+        reading = self._read(index)
         if not _is_valid(reading):
-            source.close()
+            self._close(index)
             return None
         logger.warning(
             "%s source %s promoted back after a successful retry (%.1f W)",
             self._component.upper(),
-            _source_name(source),
+            _source_name(self.sources[index]),
             reading.watts,
         )
         self._opened.add(index)
@@ -153,11 +158,40 @@ class _SourceChain:
             return True
         if index in self._unavailable:
             return False
-        if self.sources[index].open():
+        if self._open(index):
             self._opened.add(index)
             return True
         self._unavailable.add(index)
         return False
+
+    def _open(self, index: int) -> bool:
+        try:
+            return self.sources[index].open()
+        except Exception as exc:
+            self._report(index, "open", exc)
+            return False
+
+    def _read(self, index: int) -> Reading | None:
+        try:
+            return self.sources[index].read()
+        except Exception as exc:
+            self._report(index, "read", exc)
+            return None
+
+    def _close(self, index: int) -> None:
+        try:
+            self.sources[index].close()
+        except Exception as exc:
+            self._report(index, "close", exc)
+
+    def _report(self, index: int, action: str, exc: Exception) -> None:
+        self._warn(
+            "%s source %s failed to %s: %s",
+            self._component.upper(),
+            _source_name(self.sources[index]),
+            action,
+            exc,
+        )
 
 
 class PowerModel:
