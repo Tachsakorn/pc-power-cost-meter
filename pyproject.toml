@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "power-meter"
+version = "0.1.0"
+description = "PC Power & Cost Meter: live PC wall power and electricity cost in Thai Baht (THB)."
+license = { text = "MIT" }
+requires-python = ">=3.13"
+dependencies = ["customtkinter>=6.0,<7", "nvidia-ml-py>=13"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "mypy", "pyinstaller>=6.22"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+# tools/probe.py is a committed hardware-probe script that predates this lint config; kept unmodified.
+extend-exclude = ["tools/probe.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+strict = true
+packages = ["power_meter"]
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
