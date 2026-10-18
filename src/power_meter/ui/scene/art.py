@@ -14,7 +14,7 @@ from power_meter.ui.scene.state import SceneState
 NATIVE: Final = (128, 160)
 
 Point = tuple[int, int]
-Path = tuple[Point, ...]
+Route = tuple[Point, ...]
 
 _CANOPY_FRAMES: Final = (0, 1, 0, 2)
 _CANOPY_STEP_TICKS: Final = 3
@@ -66,7 +66,7 @@ def _draw_haze(scene: Image.Image, density: float) -> None:
             scene.putpixel(site, HAZE)
 
 
-def _draw_particles(scene: Image.Image, count: int, tick: int, paths: tuple[Path, ...]) -> None:
+def _draw_particles(scene: Image.Image, count: int, tick: int, paths: tuple[Route, ...]) -> None:
     for i in range(count):
         path = paths[i % len(paths)]
         colour = INDEX["core2"] if i % 3 == 2 else INDEX["core3"]
@@ -85,7 +85,7 @@ class SceneArt:
         back: Image.Image,
         canopy: Image.Image,
         glass: Image.Image,
-        paths: tuple[Path, ...],
+        paths: tuple[Route, ...],
     ) -> None:
         self.paths = paths
         self._base = read_palette(back)
@@ -97,8 +97,9 @@ class SceneArt:
         folder = resources.files("power_meter") / "data" / "scene"
 
         def load(name: str) -> Image.Image:
-            image = Image.open(str(folder / name))
-            image.load()
+            with (folder / name).open("rb") as handle:
+                image = Image.open(handle)
+                image.load()
             return image
 
         raw = json.loads((folder / "paths.json").read_text(encoding="utf-8"))

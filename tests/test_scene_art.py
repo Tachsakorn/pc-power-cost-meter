@@ -16,7 +16,10 @@ def art() -> SceneArt:
 
 
 def sprite(name: str) -> Image.Image:
-    return Image.open(str(resources.files("power_meter") / "data" / "scene" / name))
+    with (resources.files("power_meter") / "data" / "scene" / name).open("rb") as handle:
+        image = Image.open(handle)
+        image.load()
+    return image
 
 
 def lit_pixels(image: Image.Image, state: SceneState) -> int:
@@ -54,10 +57,11 @@ def test_high_has_more_lit_pixels_than_idle(art: SceneArt) -> None:
     assert high > idle
 
 
-def test_dormant_has_no_particles_or_rings(art: SceneArt) -> None:
+def test_dormant_is_still_while_high_moves_within_a_canopy_step(art: SceneArt) -> None:
     assert art.frame(SceneState.DORMANT, 0, False, True) == art.frame(
-        SceneState.DORMANT, 0, False, False
+        SceneState.DORMANT, 1, False, True
     )
+    assert art.frame(SceneState.HIGH, 0, False, True) != art.frame(SceneState.HIGH, 1, False, True)
 
 
 def test_static_frame_ignores_the_tick(art: SceneArt) -> None:
