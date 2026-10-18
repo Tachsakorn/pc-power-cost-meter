@@ -1,6 +1,9 @@
+import ctypes
 from collections.abc import Mapping
+from typing import Any
 
 from power_meter.sensors.base import BatteryReading, Component, Reading
+from power_meter.sensors.pdh import CounterValueItem
 
 
 class FakeSource:
@@ -56,3 +59,64 @@ class FakeLoad:
 
     def gpu_utilizations(self) -> Mapping[str, float]:
         return self.gpus
+
+
+PDH_MORE_DATA = 0x800007D2
+PDH_CSTATUS_NO_COUNTER = 0xC0000BB9
+PDH_CSTATUS_INVALID_DATA = 0xC0000BBA
+
+
+class FakePdh:
+    """Stands in for pdh.dll. `counters` maps English counter paths to instance -> value."""
+
+    def __init__(self, counters: dict[str, dict[str, float]]) -> None:
+        self.counters = counters
+        self.calls: list[str] = []
+        self.formats: list[int] = []
+        self.collect_status = 0
+        self.invalid: set[str] = set()
+        self._paths: dict[int, str] = {}
+        self._items: object = None
+
+    def PdhOpenQueryW(self, source: None, user_data: int, query: Any) -> int:
+        self.calls.append("PdhOpenQueryW")
+        query.contents.value = 1
+        return 0
+
+    def PdhAddEnglishCounterW(self, query: Any, path: str, user_data: int, counter: Any) -> int:
+        self.calls.append("PdhAddEnglishCounterW")
+        if path not in self.counters:
+            return PDH_CSTATUS_NO_COUNTER
+        handle = 100 + len(self._paths)
+        self._paths[handle] = path
+        counter.contents.value = handle
+        return 0
+
+    def PdhCollectQueryData(self, query: Any) -> int:
+        self.calls.append("PdhCollectQueryData")
+        return self.collect_status
+
+    def PdhGetFormattedCounterArrayW(
+        self, counter: Any, fmt: int, size: Any, count: Any, buffer: Any
+    ) -> int:
+        self.calls.append("PdhGetFormattedCounterArrayW")
+        self.formats.append(fmt)
+        values = self.counters[self._paths[counter]]
+        count.contents.value = len(values)
+        if not values:
+            return 0
+        needed = ctypes.sizeof(CounterValueItem) * len(values)
+        if size.contents.value < needed:
+            size.contents.value = needed
+            return PDH_MORE_DATA
+        items = (CounterValueItem * len(values)).from_buffer(buffer)
+        for item, (name, value) in zip(items, values.items(), strict=True):
+            item.szName = name
+            item.FmtValue.doubleValue = value
+            item.FmtValue.CStatus = PDH_CSTATUS_INVALID_DATA if name in self.invalid else 0
+        self._items = items
+        return 0
+
+    def PdhCloseQuery(self, query: Any) -> int:
+        self.calls.append("PdhCloseQuery")
+        return 0
