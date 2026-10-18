@@ -80,7 +80,7 @@ src/power_meter/
     scene/             dome scene layers (back, canopy, glass PNGs) and particle paths
   ui/
     app.py             main window: polling, view switching, theme, saving settings
-    stage.py           window-filling canvas: backdrop, animated scene, caption, hover text
+    stage.py           window-filling canvas: backdrop, animated scene, caption, hover text, hints
     main_view.py       dashboard and its view-model
     gauge.py           tick gauge image
     settings_view.py   settings view
@@ -278,7 +278,7 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
                             Gaming-level use
                      0                    420 W
  ● High load ·       SPENT
-   following         ฿ 1.2847                  in 2h 15m
+   following         ฿ 1.2847              in 2 h 15 min
    live data         ───────────────────────────────────
                      PER HOUR   │ PER MONTH   │ HOURS A DAY
                      ฿1.11      │ ≈ ฿166      │ [−] 5 [+]
@@ -292,7 +292,7 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
                      Normal meter · ฿4.50 per unit   Change   Reset
 ```
 
-- **Status line.** "● Measuring", or the active notice (see States). The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise.
+- **Status line.** "● Measuring", or the active notice (see States). The dot is in the accent colour only while a live reading is shown with no notice; during a notice it is muted, and with no running reading (warming up or restarting) it becomes a hollow "○", like the scene caption. The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise. Hovering or focusing either one shows a small hint under it ("Light mode" or "Dark mode", "Settings"), drawn like the scene's hover text; it goes away on leave, loss of focus or a click.
 - **Gauge.** Watts in a large light weight with a small "W", the usage label below, and "0" and the PC's peak watts (`P_peak`) at the ends of the scale. With TOU selected, the price line in the footer reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`.
 - **Spent.** The "฿" sign small, the total large in the light weight with four decimals, and "in <duration>" right-aligned on the same baseline. Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
 - **Stats row.** Per hour, per month and hours a day (a 1–24 stepper that saves on every change), separated by 1 px rules. The month figure reads "Measuring…" for the first minute of session data (§5).
@@ -303,7 +303,7 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
 
 ### Gauge
 
-61 ticks on a 200° arc, from 190° to −10°. Every tenth tick is longer. Ticks up to the current one are drawn in the accent colour, the rest in the track colour, and the current tick is the longest and thickest. The lit fraction is `wall_w / peak_w`, clamped to 0–1, so the gauge and the usage label share the same peak. The arc is rendered with Pillow at four times the size and scaled down, and redrawn only when the lit tick or the palette changes.
+61 ticks on a 200° arc, from 190° to −10°. Every tenth tick is longer. Ticks up to the current one are drawn in the accent colour, the rest in the track colour, and the current tick is the longest and thickest. The lit fraction is the displayed watts (the 3-sample average shown above the arc) over `peak_w`, clamped to 0–1, so the ticks agree with the number and share the usage label's peak. The arc is rendered with Pillow at twice the size and scaled down, and redrawn only when the lit tick, the palette or the display scaling changes.
 
 ### Scene
 
@@ -338,9 +338,9 @@ Index 0 is transparent and the layers share one 32-colour palette, plus a haze c
 
 The effects are drawn on the indexed image before it is coloured. Particles advance one path pixel per step, glow rings are dithered ellipses around the core whose pattern shifts every other step, and haze is ordered-dither (4 × 4 Bayer) pixels on the air. By day the air, glass and highlight colours switch to lighter ones.
 
-**Scale.** Integer only: `pixel_size = max(1, min(300 × k // 128, 320 × k // 160))`, with `k` the display scaling, drawn with nearest-neighbour scaling. The dome is centred in the left column, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`.
+**Scale.** Integer only: `pixel_size = max(1, min(300 × k // 128, 320 × k // 160))`, with `k` the display scaling, drawn with nearest-neighbour scaling. The dome is centred in the left column, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`. If the display scaling changes while the window is open, for example when it moves to another monitor, the scene column, `pixel_size`, the gauge, the rules and bars, and the backdrop are recomputed from the new `k`.
 
-**Rendering.** Each frame is composited from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place, so there is no per-frame allocation. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
+**Rendering.** Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
 
 ### Animation
 
@@ -356,7 +356,7 @@ A pixel backdrop spans the whole window at the scene's `pixel_size`, so the deco
 
 - **Dark.** A faint diagonal dithered band, about 320 faint stars in three greys and 48 dim cream or teal ones, and 14 cross-shaped stars (a bright centre with four dim arms) that take turns twinkling.
 - **Light.** A sun at the top left with a dithered halo and eight short rays, faint diagonal light bands, up to 7 clouds, 14 seeds and 3 birds.
-- **Clear zones.** The widgets sit on the canvas with the background colour, so any decoration under them would show as a gap. Every decoration keeps 3 screen px (8 px for twinkling stars) away from the scene, the caption, the gauge, the hover text and every visible widget. The backdrop is drawn again whenever the layout changes: a theme change, Settings opening or closing, the gauge moving, the breakdown gaining or losing a row.
+- **Clear zones.** The widgets sit on the canvas with the background colour, so any decoration under them would show as a gap. Every decoration keeps 3 screen px (8 px for twinkling stars) away from the scene, the caption row, the gauge and every visible widget. The caption row is reserved from the layout rather than from the drawn text, so it is clear from the first frame. Hover text and hints sit in their own opaque box and come and go, so the backdrop doesn't make room for them. The backdrop is drawn again whenever the layout changes: a theme change, Settings opening or closing, the gauge moving, the breakdown gaining or losing a row, the display scaling changing. Requests made while one event is handled share a single redraw, and nothing is drawn until the first readings are on screen.
 
 ### Settings view
 
@@ -386,12 +386,12 @@ The notes share the status line. When several apply, the highest wins: restartin
 
 ### Design tokens
 
-The palette is Earth & amber. Every colour in the window comes from `ui/theme.py`.
+The palette is Earth & amber. Every interface colour comes from `ui/theme.py`. The scene and the backdrop are artwork and keep their own pixel-art colours, in `ui/scene/palette.py` and `ui/scene/backdrop.py`; only the backdrop's base colour is taken from the theme.
 
 | Token | Dark | Light | Used for |
 |---|---|---|---|
 | background | `#1A1613` | `#F4EEE4` | Window, canvas |
-| surface | `#231E1A` | `#FBF7F0` | Raised controls, hover text box |
+| surface | `#231E1A` | `#FBF7F0` | Raised controls, hover text and hint boxes |
 | line | `#332B25` | `#E2D8C8` | Rules, outlines |
 | text | `#F0E8DC` | `#2A2119` | Values, primary text |
 | text_muted | `#A3968A` | `#74675A` | Captions, labels, units |
@@ -405,7 +405,7 @@ Contrast against the background and the surface: text, muted text and error are 
 
 - **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 54 (watts), 40 (cost), 22 (baht sign), 18 (watt unit), 17 (stat values), 13 (body), 11 (captions).
 - **Spacing:** 4-px grid (4 / 8 / 12 / 16 / 24), with 20 px left and 24 px right margins on the dashboard. Controls share one 8 px corner radius. No gradients, glow or emoji; the only imagery is the pixel scene.
-- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, and the scene state is also written in the caption. Icon buttons have hover tooltips naming their action.
+- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, the status dot changes shape when there is no live reading, and the scene state is also written in the caption. The theme and Settings buttons show only a glyph, so they name their action in a hint on hover and on keyboard focus.
 
 ## 7. Persistence
 
@@ -449,7 +449,7 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 
 ## 10. Build, test, release
 
-- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast, scene state, scene frames, backdrop); and one smoke test that drives the real window over a fake sampler, skipped when Tk has no display; and the version (package attribute equals installed metadata). Sensors are tested against fake DLL objects, so the suite runs on Linux.
+- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast, scene state, scene frames, backdrop); and window tests that drive the real stage, dashboard and window over a fake sampler (clear zones, one backdrop redraw per action, scaling changes, hints, Settings), skipped when Tk has no display; and the version (package attribute equals installed metadata). Sensors are tested against fake DLL objects, so the suite runs on Linux.
 - **Hardware smoke test:** `tools/sensor_check.py` plus a manual checklist run on the desktop and the laptop before each release.
 - **CI (GitHub Actions, `windows-latest`, Python 3.13 and 3.15):** `ruff check .`, `mypy` (strict, configured in `pyproject.toml`), `pytest` on every push and PR.
 - **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. The job fails if the tag isn't `v` plus `power_meter.__version__`, which is the only place the version is written. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.

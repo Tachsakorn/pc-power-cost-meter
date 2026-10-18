@@ -23,7 +23,7 @@ numbers come from real sensors and which are estimates.
   and the cost per hour at the current price.
 - **Measured where possible, estimated where not.** CPU power comes from the processor's own power
   counters, GPU power from the AMD or NVIDIA driver, and a laptop on battery uses the battery's
-  discharge rate. Anything that cannot be measured is estimated, and the details list labels every
+  discharge rate. Anything that cannot be measured is estimated, and the breakdown labels every
   part as *measured* or *estimated*.
 - **Normal and TOU meters.** Prices for the standard progressive tariff and the Time-of-Use tariff,
   including Thai public holidays that are billed at the off-peak rate.
@@ -86,9 +86,9 @@ replaces the dashboard and leaves the scene in view.
 - **The gauge** shows wall power (averaged over the last three seconds so the number is readable)
   with a usage level from *Idle* to *Gaming-level use*. Its ticks fill from 0 W to the most this PC
   is expected to draw, which is printed at the right end of the scale.
-- **The scene** switches between *Idle*, *Active* and *High load* using the same load figure, and
-  shows *Waiting for live data* while there are no readings. The caption under the dome names the
-  state; hover over the dome for the exact reading.
+- **The scene** switches between *Idle*, *Active* and *High load* by how much of that maximum the PC
+  is drawing, and shows *Waiting for live data* while there are no readings. The caption under the
+  dome names the state; hover over the dome for the exact reading.
 - **Spent** is the running total, kept across restarts, with the time it covers. **Reset** sets it
   back to zero; click it a second time within 3 seconds to confirm.
 - **Per hour**, **per month** and **hours a day** give the cost at the current price and the
