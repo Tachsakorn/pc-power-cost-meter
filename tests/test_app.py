@@ -8,6 +8,7 @@ from typing import Any, cast
 import customtkinter as ctk
 import pytest
 
+from power_meter import __version__
 from power_meter.meter import Totals
 from power_meter.power_model import Part, PowerSnapshot
 from power_meter.sampler import MeterState, Sampler
@@ -138,6 +139,7 @@ def test_window_smoke(tmp_path: Path) -> None:
         assert "▾ Hide details" in texts(app)
 
         click(app, "Settings")
+        assert f"Version {__version__}" in texts(app)
         click(app, "TOU")
         click(app, "Save")
         assert [s.meter_type for s in saved] == [MeterType.TOU]

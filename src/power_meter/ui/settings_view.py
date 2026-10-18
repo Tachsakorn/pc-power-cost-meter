@@ -4,6 +4,7 @@ from typing import Any, Final, Literal
 
 import customtkinter as ctk
 
+from power_meter import __version__
 from power_meter.sensors.base import Component
 from power_meter.settings import STANDARD_BAND_RATES, MeterType, Settings, StandardBand
 from power_meter.ui import theme
@@ -180,6 +181,10 @@ class SettingsView(ctk.CTkFrame):
         path.configure(wraplength=CONTENT_W)
         path.grid(row=folder + 1, column=0, sticky="w")
         self._advanced.grid_remove()
+
+        label(
+            self._painter, content, f"Version {__version__}", self._font_caption, "text_muted"
+        ).grid(row=8, column=0, sticky="w", padx=XL, pady=(L, M))
 
         footer = row(self)
         footer.grid(row=2, column=0, sticky="ew", padx=XL, pady=(M, L))
