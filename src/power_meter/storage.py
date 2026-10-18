@@ -5,7 +5,7 @@ import os
 import sys
 import tempfile
 from collections.abc import Mapping
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -176,10 +176,13 @@ def _non_negative(raw: object) -> float | None:
     return value if math.isfinite(value) and value >= 0 else None
 
 
-def load_totals(data_dir: Path | None) -> Totals:
-    stored = _read_json(data_dir / STATE_FILE) if data_dir else None
-    if stored is None:
-        return Totals()
+@dataclass(frozen=True)
+class SavedState:
+    totals: Totals
+    learned_other_w: float | None = None
+
+
+def _totals(stored: Mapping[str, object]) -> Totals:
     cost = _non_negative(stored.get("cost_thb"))
     energy = _non_negative(stored.get("energy_kwh"))
     elapsed = _non_negative(stored.get("elapsed_s"))
@@ -188,5 +191,22 @@ def load_totals(data_dir: Path | None) -> Totals:
     return Totals(cost_thb=cost, energy_kwh=energy, elapsed_s=elapsed)
 
 
-def save_totals(data_dir: Path, totals: Totals) -> None:
-    atomic_write_json(data_dir / STATE_FILE, {"schema": SCHEMA, **asdict(totals)})
+def _learned_watts(raw: object) -> float | None:
+    watts = _non_negative(raw)
+    if watts is None or validate_field("other_w", watts) is not None:
+        return None
+    return watts
+
+
+def load_state(data_dir: Path | None) -> SavedState:
+    stored = _read_json(data_dir / STATE_FILE) if data_dir else None
+    if stored is None:
+        return SavedState(Totals())
+    return SavedState(_totals(stored), _learned_watts(stored.get("learned_other_w")))
+
+
+def save_state(data_dir: Path, state: SavedState) -> None:
+    data: dict[str, object] = {"schema": SCHEMA, **asdict(state.totals)}
+    if state.learned_other_w is not None:
+        data["learned_other_w"] = state.learned_other_w
+    atomic_write_json(data_dir / STATE_FILE, data)

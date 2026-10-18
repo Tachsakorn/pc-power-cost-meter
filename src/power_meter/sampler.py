@@ -12,6 +12,7 @@ from typing import Final, Literal
 from power_meter.meter import Meter, Totals
 from power_meter.power_model import PowerModel, PowerSnapshot
 from power_meter.settings import Settings
+from power_meter.storage import SavedState
 from power_meter.tariff import HolidayCalendar, tariff_from_settings
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ class Sampler(threading.Thread):
         meter: Meter,
         settings: Settings,
         holidays: HolidayCalendar,
-        save_totals: Callable[[Totals], None],
+        save_state: Callable[[SavedState], None],
         interval_s: float = 1.0,
         autosave_s: float = 30.0,
         now: Callable[[], datetime] = datetime.now,
@@ -56,7 +57,7 @@ class Sampler(threading.Thread):
         self._meter = meter
         self._holidays = holidays
         self._tariff = tariff_from_settings(settings, holidays)
-        self._save_totals = save_totals
+        self._save_state = save_state
         self._interval_s = interval_s
         self._autosave_s = autosave_s
         self._now = now
@@ -85,7 +86,7 @@ class Sampler(threading.Thread):
         self._commands.put(self._reset)
 
     def save_now(self, timeout: float = 2.0) -> None:
-        """Saves the totals on this thread and waits up to `timeout` for it to finish."""
+        """Saves the totals and the learned value on this thread, waiting up to `timeout`."""
         if not self.is_alive() or self._stopping.is_set():
             return
         done = threading.Event()
@@ -161,7 +162,7 @@ class Sampler(threading.Thread):
 
     def _save(self) -> None:
         try:
-            self._save_totals(self._meter.totals)
+            self._save_state(SavedState(self._meter.totals, self._model.learned_other_w))
         except OSError as e:
             # The message alone: the full path would put the Windows user name in the log.
             logger.warning("Could not save totals: %s", e.strerror or type(e).__name__)

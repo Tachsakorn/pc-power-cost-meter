@@ -14,6 +14,7 @@ from power_meter.meter import Meter, Totals
 from power_meter.power_model import PowerModel, PowerSnapshot
 from power_meter.sampler import Sampler
 from power_meter.settings import MeterType, Settings, default_settings
+from power_meter.storage import SavedState
 from power_meter.tariff import HolidayCalendar
 
 DESKTOP = default_settings(is_laptop=False)
@@ -53,6 +54,7 @@ class FakeModel:
         self.calls = 0
         self.settings: list[Settings] = []
         self.close_calls = 0
+        self.learned_other_w: float | None = None
         self._free_running = False
         self._last_w = 0.0
 
@@ -92,13 +94,13 @@ class Rig:
     def __init__(
         self,
         clock: ManualClock | None = None,
-        save: Callable[[Totals], None] | None = None,
+        save: Callable[[SavedState], None] | None = None,
         persisted: Totals | None = None,
         interval_s: float = 0.01,
     ) -> None:
         self.model = FakeModel()
         self.meter = Meter(persisted)
-        self.saves: list[Totals] = []
+        self.saves: list[SavedState] = []
         self.clock = clock or ManualClock(step=1.0)
         self.sampler = Sampler(
             cast(PowerModel, self.model),
@@ -193,7 +195,7 @@ def test_reset_is_saved_right_away(make_rig: Callable[..., Rig]) -> None:
     rig = make_rig(persisted=Totals(12.5, 2.0, 3600.0))
     rig.sampler.request_reset()
     rig.feed(100.0)
-    assert rig.saves == [Totals()]
+    assert rig.saves == [SavedState(Totals())]
 
 
 def test_reset_requested_just_before_stop_is_saved(make_rig: Callable[..., Rig]) -> None:
@@ -201,7 +203,25 @@ def test_reset_requested_just_before_stop_is_saved(make_rig: Callable[..., Rig])
     rig.sampler.request_reset()
     rig.stop()
     assert rig.saves
-    assert all(saved == Totals() for saved in rig.saves)
+    assert all(saved == SavedState(Totals()) for saved in rig.saves)
+
+
+def test_saves_carry_the_learned_other_components(make_rig: Callable[..., Rig]) -> None:
+    clock = ManualClock()
+    rig = make_rig(clock=clock)
+    rig.model.learned_other_w = 21.4
+    rig.feed(100.0)
+    clock.now = 30.0
+    rig.feed(100.0)
+    assert rig.saves == [SavedState(rig.sampler.latest().totals, learned_other_w=21.4)]
+
+
+def test_reset_keeps_the_learned_other_components(make_rig: Callable[..., Rig]) -> None:
+    rig = make_rig(persisted=Totals(12.5, 2.0, 3600.0))
+    rig.model.learned_other_w = 21.4
+    rig.sampler.request_reset()
+    rig.feed(100.0)
+    assert rig.saves == [SavedState(Totals(), learned_other_w=21.4)]
 
 
 def test_apply_settings_switches_tariff(make_rig: Callable[..., Rig]) -> None:
@@ -247,22 +267,22 @@ def test_autosave_called(make_rig: Callable[..., Rig]) -> None:
     assert rig.saves == []
     clock.now = 30.0
     rig.feed(100.0)
-    assert rig.saves == [rig.sampler.latest().totals]
+    assert rig.saves == [SavedState(rig.sampler.latest().totals)]
     clock.now = 45.0
     rig.feed(100.0)
     assert len(rig.saves) == 1
 
 
 def test_save_now_saves_on_the_sampler_thread(make_rig: Callable[..., Rig]) -> None:
-    saved: list[tuple[str, Totals]] = []
+    saved: list[tuple[str, SavedState]] = []
     rig = make_rig(
         clock=ManualClock(),
         persisted=Totals(12.5, 2.0, 3600.0),
-        save=lambda totals: saved.append((threading.current_thread().name, totals)),
+        save=lambda state: saved.append((threading.current_thread().name, state)),
     )
     rig.model.release()
     rig.sampler.save_now()
-    assert saved == [("sampler", Totals(12.5, 2.0, 3600.0))]
+    assert saved == [("sampler", SavedState(Totals(12.5, 2.0, 3600.0)))]
 
 
 def test_save_now_after_stop_returns_at_once(make_rig: Callable[..., Rig]) -> None:
@@ -276,7 +296,7 @@ def test_save_now_after_stop_returns_at_once(make_rig: Callable[..., Rig]) -> No
 def test_failed_save_is_logged_and_sampling_continues(
     make_rig: Callable[..., Rig], caplog: pytest.LogCaptureFixture
 ) -> None:
-    def failing_save(totals: Totals) -> None:
+    def failing_save(state: SavedState) -> None:
         raise OSError("disk full")
 
     clock = ManualClock()
@@ -294,7 +314,7 @@ def test_failed_save_is_logged_and_sampling_continues(
 def test_failed_save_log_leaves_out_the_path(
     make_rig: Callable[..., Rig], caplog: pytest.LogCaptureFixture
 ) -> None:
-    def failing_save(totals: Totals) -> None:
+    def failing_save(state: SavedState) -> None:
         raise OSError(13, "Permission denied", "/home/someone/meter/state.json")
 
     rig = make_rig(save=failing_save)
@@ -312,7 +332,7 @@ def test_stop_saves_and_closes_model(make_rig: Callable[..., Rig]) -> None:
     rig.feed(100.0, 200.0)
     rig.stop()
     assert not rig.sampler.is_alive()
-    assert rig.saves == [rig.meter.totals]
+    assert rig.saves == [SavedState(rig.meter.totals)]
     assert rig.model.close_calls == 1
     rig.sampler.stop()
     assert len(rig.saves) == 1

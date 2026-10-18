@@ -11,12 +11,13 @@ from power_meter.meter import Totals
 from power_meter.settings import MeterType, StandardBand, default_settings
 from power_meter.storage import (
     APP_DIR_NAME,
+    SavedState,
     atomic_write_json,
     load_settings,
-    load_totals,
+    load_state,
     resolve_data_dir,
     save_settings,
-    save_totals,
+    save_state,
 )
 
 DEFAULTS = default_settings(is_laptop=False)
@@ -54,18 +55,18 @@ def test_saved_config_is_readable_json_with_schema(tmp_path: Path) -> None:
 
 def test_roundtrip_totals(tmp_path: Path) -> None:
     totals = Totals(cost_thb=12.3456, energy_kwh=2.75, elapsed_s=3600.5)
-    save_totals(tmp_path, totals)
-    assert load_totals(tmp_path) == totals
+    save_state(tmp_path, SavedState(totals))
+    assert load_state(tmp_path) == SavedState(totals)
 
 
 def test_missing_files_give_defaults(tmp_path: Path) -> None:
     assert load_settings(tmp_path, is_laptop=True) == default_settings(is_laptop=True)
-    assert load_totals(tmp_path) == Totals()
+    assert load_state(tmp_path) == SavedState(Totals())
 
 
 def test_no_data_dir_gives_defaults(tmp_path: Path) -> None:
     assert load_settings(None, is_laptop=False) == DEFAULTS
-    assert load_totals(None) == Totals()
+    assert load_state(None) == SavedState(Totals())
 
 
 @pytest.mark.parametrize("content", ["{not json", "[1, 2]", '{"schema": 2, "other_w": 40}', ""])
@@ -79,7 +80,7 @@ def test_corrupt_json_backed_up_and_defaults_used(tmp_path: Path, content: str) 
 def test_backup_replaces_older_backup(tmp_path: Path) -> None:
     (tmp_path / "state.json.bak").write_text("old")
     (tmp_path / "state.json").write_text("{broken")
-    assert load_totals(tmp_path) == Totals()
+    assert load_state(tmp_path) == SavedState(Totals())
     assert (tmp_path / "state.json.bak").read_text() == "{broken"
 
 
@@ -167,7 +168,41 @@ def test_holidays_must_be_a_list(tmp_path: Path) -> None:
 )
 def test_invalid_totals_give_zero_totals(tmp_path: Path, state: dict[str, object]) -> None:
     (tmp_path / "state.json").write_text(json.dumps({"schema": 1, **state}))
-    assert load_totals(tmp_path) == Totals()
+    assert load_state(tmp_path) == SavedState(Totals())
+
+
+def write_state(directory: Path, **fields: object) -> None:
+    totals = {"cost_thb": 1.5, "energy_kwh": 0.25, "elapsed_s": 600.0}
+    (directory / "state.json").write_text(json.dumps({"schema": 1, **totals, **fields}))
+
+
+def test_roundtrip_learned_other_components(tmp_path: Path) -> None:
+    state = SavedState(Totals(1.5, 0.25, 600.0), learned_other_w=21.4)
+    save_state(tmp_path, state)
+    assert load_state(tmp_path) == state
+    assert json.loads((tmp_path / "state.json").read_text())["schema"] == 1
+
+
+def test_state_without_a_learned_value_leaves_the_key_out(tmp_path: Path) -> None:
+    save_state(tmp_path, SavedState(Totals(1.5, 0.25, 600.0)))
+    assert "learned_other_w" not in json.loads((tmp_path / "state.json").read_text())
+
+
+@pytest.mark.parametrize("bad", [-1.0, 150.5, "21", True, None, float("nan"), [21]])
+def test_invalid_learned_value_is_dropped_and_totals_kept(tmp_path: Path, bad: object) -> None:
+    write_state(tmp_path, learned_other_w=bad)
+    assert load_state(tmp_path) == SavedState(Totals(1.5, 0.25, 600.0))
+
+
+@pytest.mark.parametrize("edge", [0, 150])
+def test_learned_value_range_is_inclusive(tmp_path: Path, edge: int) -> None:
+    write_state(tmp_path, learned_other_w=edge)
+    assert load_state(tmp_path).learned_other_w == edge
+
+
+def test_learned_value_survives_invalid_totals(tmp_path: Path) -> None:
+    write_state(tmp_path, cost_thb=-1.0, learned_other_w=21.4)
+    assert load_state(tmp_path) == SavedState(Totals(), learned_other_w=21.4)
 
 
 def test_atomic_write_leaves_no_tmp(tmp_path: Path) -> None:
@@ -214,7 +249,7 @@ def test_failed_backup_is_logged_without_its_path(
 
     monkeypatch.setattr(storage.os, "replace", refuse)
     with caplog.at_level(logging.WARNING):
-        assert load_totals(tmp_path) == Totals()
+        assert load_state(tmp_path) == SavedState(Totals())
     assert "Access is denied" in caplog.text
     assert str(tmp_path) not in caplog.text
 

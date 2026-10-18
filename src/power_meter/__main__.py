@@ -12,13 +12,14 @@ from power_meter.power_model import PowerModel
 from power_meter.sampler import Sampler
 from power_meter.sensors.battery import battery_present
 from power_meter.sensors.discovery import build_sources
+from power_meter.settings import default_settings
 from power_meter.storage import (
     exe_dir,
     load_settings,
-    load_totals,
+    load_state,
     resolve_data_dir,
     save_settings,
-    save_totals,
+    save_state,
 )
 from power_meter.tariff import HolidayCalendar
 from power_meter.ui.app import App, show_already_running
@@ -59,7 +60,7 @@ def start(data_dir: Path | None) -> App:
     """Loads saved state, starts sampling and builds the window."""
     is_laptop = battery_present()
     settings = load_settings(data_dir, is_laptop)
-    totals = load_totals(data_dir)
+    state = load_state(data_dir)
 
     sources = build_sources(settings, is_laptop)
     model = PowerModel(
@@ -68,9 +69,13 @@ def start(data_dir: Path | None) -> App:
         settings,
         refresh=sources.load.refresh,
         load=sources.load,
+        # A learned value only applies to the laptop it was learned on, not to a desktop the
+        # folder was copied to.
+        learned_other_w=state.learned_other_w if is_laptop else None,
+        profile_other_w=default_settings(is_laptop).other_w,
     )
     holidays = HolidayCalendar.bundled()
-    sampler = Sampler(model, Meter(totals), settings, holidays, saver(save_totals, data_dir))
+    sampler = Sampler(model, Meter(state.totals), settings, holidays, saver(save_state, data_dir))
     sampler.start()
 
     def shut_down() -> None:
