@@ -12,7 +12,7 @@ from power_meter.power_model import (
     PowerSnapshot,
     usage_label,
 )
-from power_meter.sensors.base import BatteryReading, Component, Reading
+from power_meter.sensors.base import BatteryReading, Component, PowerSource, Reading
 from power_meter.sensors.estimators import CpuEstimate, GpuEstimate
 from power_meter.settings import Settings, default_settings
 
@@ -37,18 +37,23 @@ class FakeClock:
 
 
 def make_model(
-    cpu: list[FakeSource] | None = None,
-    gpu: list[FakeSource] | None = None,
+    cpu: list[PowerSource] | None = None,
+    gpu: list[PowerSource] | None = None,
     settings: Settings = DESKTOP,
     battery: FakeBattery | None = None,
     clock: FakeClock | None = None,
+    load: FakeLoad | None = None,
 ) -> PowerModel:
     return PowerModel(
         {"cpu": cpu or [estimate("cpu", 30)], "gpu": gpu or [estimate("gpu", 0)]},
         battery,
         settings,
         clock=clock or FakeClock(),
+        load=load,
     )
+
+
+INTEGRATED_ONLY = FakeLoad(discrete=False)
 
 
 def part_watts(snapshot: PowerSnapshot, label: str) -> float:
@@ -265,7 +270,7 @@ def test_usage_labels() -> None:
 
 def test_peak_uses_tdp_budget_until_exceeded() -> None:
     budget = (65 + 150 + 25) / 0.87
-    assert make_model(gpu=[estimate("gpu", 15)]).sample().peak_w == pytest.approx(budget)
+    assert make_model().sample().peak_w == pytest.approx(budget)
     hot = make_model(cpu=[estimate("cpu", 300)], gpu=[estimate("gpu", 400)])
     snapshot = hot.sample()
     assert snapshot.peak_w == pytest.approx(snapshot.wall_w)
@@ -273,7 +278,9 @@ def test_peak_uses_tdp_budget_until_exceeded() -> None:
 
 
 def test_budget_leaves_out_gpu_tdp_without_discrete_gpu() -> None:
-    model = make_model(cpu=[FakeSource("cpu", [measured(7)])], settings=LAPTOP)
+    model = make_model(
+        cpu=[FakeSource("cpu", [measured(7)])], settings=LAPTOP, load=INTEGRATED_ONLY
+    )
     snapshot = model.sample()
     assert snapshot.wall_w == pytest.approx((7 + 10) / 0.90)
     assert snapshot.peak_w == pytest.approx((45 + 10) / 0.90)
@@ -282,24 +289,36 @@ def test_budget_leaves_out_gpu_tdp_without_discrete_gpu() -> None:
 
 def test_battery_usage_label_without_discrete_gpu() -> None:
     battery = FakeBattery(BatteryReading(on_ac=False, rate_w=31 * 0.90))
-    snapshot = make_model(settings=LAPTOP, battery=battery).sample()
+    snapshot = make_model(settings=LAPTOP, battery=battery, load=INTEGRATED_ONLY).sample()
     assert snapshot.wall_w == pytest.approx(31)
     assert snapshot.usage_label == "Heavy use"
 
 
 def test_gpu_part_without_discrete_gpu() -> None:
-    snapshot = make_model(settings=LAPTOP).sample()
+    snapshot = make_model(settings=LAPTOP, load=INTEGRATED_ONLY).sample()
     assert snapshot.parts[1] == Part("GPU", 0.0, False, "included in CPU")
 
 
-def test_gpu_part_with_discrete_gpu_estimate() -> None:
-    snapshot = make_model(gpu=[estimate("gpu", 15)]).sample()
-    assert snapshot.parts[1] == Part("GPU", 15, False, "estimated")
+def test_discrete_gpu_without_load_data_keeps_estimate_and_budget() -> None:
+    load = FakeLoad(gpus={}, discrete=True)
+    model = make_model(gpu=[GpuEstimate(load, 150)], load=load)
+    snapshot = model.sample()
+    assert snapshot.parts[1] == Part("GPU", 0.0, False, "estimated")
+    assert snapshot.peak_w == pytest.approx((65 + 150 + 25) / 0.87)
 
 
-def test_budget_includes_gpu_tdp_with_measured_idle_gpu() -> None:
-    model = make_model(gpu=[FakeSource("gpu", [measured(0)])])
-    assert model.sample().peak_w == pytest.approx((65 + 150 + 25) / 0.87)
+@pytest.mark.parametrize("load", [None, FakeLoad(discrete=None)], ids=["no provider", "unknown"])
+def test_unknown_adapter_types_count_as_discrete_gpu(load: FakeLoad | None) -> None:
+    snapshot = make_model(load=load).sample()
+    assert snapshot.parts[1].detail == "estimated"
+    assert snapshot.peak_w == pytest.approx((65 + 150 + 25) / 0.87)
+
+
+def test_measured_gpu_counts_even_when_classified_integrated_only() -> None:
+    model = make_model(gpu=[FakeSource("gpu", [measured(0)])], load=INTEGRATED_ONLY)
+    snapshot = model.sample()
+    assert snapshot.parts[1].detail == "measured"
+    assert snapshot.peak_w == pytest.approx((65 + 150 + 25) / 0.87)
 
 
 def test_all_estimated_flag() -> None:

@@ -117,8 +117,9 @@ each part of the PC when it starts.
 
 Integrated and software graphics adapters are identified with Microsoft's DXCore API and left out
 of the GPU estimate. An integrated GPU shares the processor's power budget, so its power is
-generally already part of the CPU package reading. On a PC without a discrete GPU the breakdown
-shows the GPU as *included in CPU*.
+generally already part of the CPU package reading. When DXCore finds no discrete GPU, the
+breakdown shows the GPU as *included in CPU* and the usage level is judged against the CPU's power
+budget alone.
 
 A reading outside 0–1000 W counts as a failed read. A measured source that fails three reads in a
 row is replaced by its estimate and retried every 60 seconds.

@@ -110,6 +110,9 @@ class PdhLoad:
     def gpu_utilizations(self) -> Mapping[str, float]:
         return self._gpus
 
+    def has_discrete_gpu(self) -> bool | None:
+        return None if self._discrete is None else bool(self._discrete)
+
     def close(self) -> None:
         if self._query is not None:
             self._query.close()

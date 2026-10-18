@@ -62,7 +62,13 @@ def start(data_dir: Path | None) -> App:
     totals = load_totals(data_dir)
 
     sources = build_sources(settings, is_laptop)
-    model = PowerModel(sources.chains, sources.battery, settings, refresh=sources.load.refresh)
+    model = PowerModel(
+        sources.chains,
+        sources.battery,
+        settings,
+        refresh=sources.load.refresh,
+        load=sources.load,
+    )
     holidays = HolidayCalendar.bundled()
     sampler = Sampler(model, Meter(totals), settings, holidays, saver(save_totals, data_dir))
     sampler.start()

@@ -4,7 +4,13 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final, TypeGuard
 
-from power_meter.sensors.base import BatterySource, Component, PowerSource, Reading
+from power_meter.sensors.base import (
+    BatterySource,
+    Component,
+    LoadProvider,
+    PowerSource,
+    Reading,
+)
 from power_meter.sensors.estimators import CpuEstimate, GpuEstimate
 from power_meter.sensors.warn_once import WarnOnce
 from power_meter.settings import Settings
@@ -207,7 +213,9 @@ class PowerModel:
         settings: Settings,
         refresh: Callable[[], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        load: LoadProvider | None = None,
     ) -> None:
+        self._load = load
         self._chains = {
             component: _SourceChain(component, sources) for component, sources in chains.items()
         }
@@ -223,10 +231,11 @@ class PowerModel:
         now = self._clock()
         cpu = self._read("cpu", now)
         gpu = self._read("gpu", now)
-        # The GPU estimator reads 0 W only when no discrete adapter is present. An integrated
-        # GPU draws from the CPU package, so it is shown as part of the CPU and the usage level
-        # is judged against the CPU's power budget alone.
-        has_discrete_gpu = gpu.measured or gpu.watts > 0
+        # An integrated GPU draws from the CPU package, so on a PC with no discrete adapter it is
+        # shown as part of the CPU and the usage level is judged against the CPU's budget alone.
+        # Unknown adapter types count as a discrete GPU.
+        classified = self._load.has_discrete_gpu() if self._load is not None else None
+        has_discrete_gpu = gpu.measured or classified is not False
         s = self._settings
 
         battery_w = self._battery_discharge_w()

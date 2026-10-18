@@ -59,6 +59,22 @@ def test_gpu_utilizations_empty_without_discrete_adapters() -> None:
     assert load.gpu_utilizations() == {}
 
 
+@pytest.mark.parametrize(
+    ("discrete", "expected"), [(frozenset({DISCRETE}), True), (frozenset(), False), (None, None)]
+)
+def test_has_discrete_gpu_follows_adapter_classification(
+    discrete: frozenset[str] | None, expected: bool | None
+) -> None:
+    assert open_load(make_dll(), discrete=discrete).has_discrete_gpu() is expected
+
+
+def test_has_discrete_gpu_unknown_when_counters_unavailable() -> None:
+    load = PdhLoad(lambda: PdhQuery(FakePdh({})), discrete_gpus=lambda: frozenset({DISCRETE}))
+    assert load.has_discrete_gpu() is None
+    assert not load.open()
+    assert load.has_discrete_gpu() is None
+
+
 def test_keeps_every_adapter_when_types_unknown(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         load = open_load(make_dll(discrete=55.0, integrated=20.0), discrete=None)

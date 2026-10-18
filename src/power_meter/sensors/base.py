@@ -52,3 +52,7 @@ class LoadProvider(Protocol):
         part of the CPU package reading.
         """
         ...
+
+    def has_discrete_gpu(self) -> bool | None:
+        """Whether the adapter classification found a discrete GPU, or None when unknown."""
+        ...

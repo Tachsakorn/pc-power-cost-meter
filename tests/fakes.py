@@ -62,15 +62,24 @@ class FakeBattery:
 
 
 class FakeLoad:
-    def __init__(self, cpu: float | None = None, gpus: Mapping[str, float] | None = None) -> None:
+    def __init__(
+        self,
+        cpu: float | None = None,
+        gpus: Mapping[str, float] | None = None,
+        discrete: bool | None = True,
+    ) -> None:
         self.cpu = cpu
         self.gpus = dict(gpus or {})
+        self.discrete = discrete
 
     def cpu_utilization(self) -> float | None:
         return self.cpu
 
     def gpu_utilizations(self) -> Mapping[str, float]:
         return self.gpus
+
+    def has_discrete_gpu(self) -> bool | None:
+        return self.discrete
 
 
 PDH_MORE_DATA = 0x800007D2
