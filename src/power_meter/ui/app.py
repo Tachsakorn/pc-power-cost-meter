@@ -97,7 +97,8 @@ class App(ctk.CTk):
         try:
             self._save_settings(settings)
         except OSError as exc:
-            logger.warning("Could not save settings: %s", exc)
+            # The message alone: the full path would put the Windows user name in the log.
+            logger.warning("Could not save settings: %s", exc.strerror or type(exc).__name__)
             self._save_failed = True
         else:
             self._save_failed = False
@@ -153,8 +154,12 @@ class App(ctk.CTk):
 
     def _close(self) -> None:
         self.after_cancel(self._poll_job)
-        self._on_close()
-        self.destroy()
+        # Hidden first: stopping the sampler can wait a few seconds for a sample in progress.
+        self.withdraw()
+        try:
+            self._on_close()
+        finally:
+            self.destroy()
 
 
 def show_already_running() -> None:

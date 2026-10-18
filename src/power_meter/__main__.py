@@ -55,15 +55,8 @@ def saver[T](save: Callable[[Path, T], None], data_dir: Path | None) -> Callable
     return write
 
 
-def main() -> int:
-    if not single_instance.acquire():
-        show_already_running()
-        return 0
-
-    data_dir = resolve_data_dir(exe_dir(), Path(os.environ.get("APPDATA", Path.home())))
-    configure_logging(data_dir)
-    logger.info("Starting version %s", __version__)
-
+def start(data_dir: Path | None) -> App:
+    """Loads saved state, starts sampling and builds the window."""
     is_laptop = battery_present()
     settings = load_settings(data_dir, is_laptop)
     totals = load_totals(data_dir)
@@ -81,7 +74,24 @@ def main() -> int:
         if not sampler.is_alive():
             sources.load.close()
 
-    App(sampler, settings, data_dir, saver(save_settings, data_dir), shut_down).mainloop()
+    return App(sampler, settings, data_dir, saver(save_settings, data_dir), shut_down)
+
+
+def main() -> int:
+    if not single_instance.acquire():
+        show_already_running()
+        return 0
+
+    data_dir = resolve_data_dir(exe_dir(), Path(os.environ.get("APPDATA", Path.home())))
+    configure_logging(data_dir)
+    logger.info("Starting version %s", __version__)
+    try:
+        app = start(data_dir)
+    except Exception:
+        # The packaged app has no console; the log is the only place this can show up.
+        logger.exception("Startup failed")
+        raise
+    app.mainloop()
     return 0
 
 

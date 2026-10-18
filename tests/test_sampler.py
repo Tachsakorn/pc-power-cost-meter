@@ -256,6 +256,21 @@ def test_failed_save_is_logged_and_sampling_continues(
     assert rig.sampler.is_alive()
 
 
+def test_failed_save_log_leaves_out_the_path(
+    make_rig: Callable[..., Rig], caplog: pytest.LogCaptureFixture
+) -> None:
+    def failing_save(totals: Totals) -> None:
+        raise OSError(13, "Permission denied", "/home/someone/meter/state.json")
+
+    rig = make_rig(save=failing_save)
+    rig.feed(100.0)
+    with caplog.at_level(logging.WARNING, logger="power_meter.sampler"):
+        rig.stop()
+    [record] = caplog.records
+    assert "Permission denied" in record.getMessage()
+    assert "/home/someone" not in record.getMessage()
+
+
 def test_stop_saves_and_closes_model(make_rig: Callable[..., Rig]) -> None:
     rig = make_rig()
     rig.feed(100.0, 200.0)

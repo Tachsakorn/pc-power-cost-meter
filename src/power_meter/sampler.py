@@ -153,4 +153,5 @@ class Sampler(threading.Thread):
         try:
             self._save_totals(self._meter.totals)
         except OSError as e:
-            logger.warning("Could not save totals: %s", e)
+            # The message alone: the full path would put the Windows user name in the log.
+            logger.warning("Could not save totals: %s", e.strerror or type(e).__name__)
