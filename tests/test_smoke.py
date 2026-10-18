@@ -1,3 +1,4 @@
+import re
 from importlib import metadata
 
 import pytest
@@ -5,8 +6,9 @@ import pytest
 import power_meter
 
 
-def test_package_imports() -> None:
-    assert power_meter.__version__ == "0.2.0"
+def test_version_is_plain_major_minor_patch() -> None:
+    # The Windows version resource needs four numbers, built from these three.
+    assert re.fullmatch(r"\d+\.\d+\.\d+", power_meter.__version__)
 
 
 def test_installed_metadata_matches_package_version() -> None:
