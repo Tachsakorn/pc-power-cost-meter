@@ -30,15 +30,34 @@ def test_rate_field_parsing(raw: str, expected: float | str) -> None:
     assert parse_number(raw) == expected
 
 
+def test_percent_shown_without_float_noise() -> None:
+    assert form_from_settings(replace(DESKTOP, psu_efficiency=0.533))["psu_efficiency"] == "53.3"
+    assert form_from_settings(replace(DESKTOP, psu_efficiency=0.9))["psu_efficiency"] == "90"
+
+
 def test_percent_converted_to_fraction() -> None:
-    settings, errors = settings_from_form(DESKTOP, edited(DESKTOP, psu_efficiency="92"))
+    settings, errors = settings_from_form(DESKTOP, edited(DESKTOP, psu_efficiency="53.3"))
     assert errors == {}
     assert settings is not None
-    assert settings.psu_efficiency == 0.92
+    assert settings.psu_efficiency == 0.533
 
 
 def test_percent_shown_as_whole_number() -> None:
     assert form_from_settings(DESKTOP)["psu_efficiency"] == "87"
+
+
+def test_typed_percent_gives_exact_fraction() -> None:
+    for tenths in range(500, 991):
+        typed = f"{tenths // 10}.{tenths % 10}"
+        settings, _ = settings_from_form(DESKTOP, edited(DESKTOP, psu_efficiency=typed))
+        assert settings is not None
+        assert settings.psu_efficiency == float(f"0.{tenths:03d}"), typed
+
+
+def test_stored_percent_survives_round_trip() -> None:
+    for tenths in range(500, 991):
+        settings = replace(DESKTOP, psu_efficiency=float(f"0.{tenths:03d}"))
+        assert settings_from_form(settings, form_from_settings(settings)) == (settings, {})
 
 
 def test_percent_range_error_speaks_in_percent() -> None:
@@ -66,6 +85,8 @@ def test_out_of_range_reported_per_field() -> None:
         replace(DESKTOP, standard_band=StandardBand.CUSTOM, custom_rate=4.1234),
         replace(DESKTOP, meter_type=MeterType.TOU, tou_peak_rate=5.7982, tou_offpeak_rate=2.6369),
         replace(DESKTOP, psu_efficiency=0.875, other_w=32.5, theme="light"),
+        replace(DESKTOP, psu_efficiency=0.533),
+        replace(DESKTOP, psu_efficiency=0.5333333333333333, other_w=12.345678901234567),
     ],
 )
 def test_round_trip_form(settings: Settings) -> None:

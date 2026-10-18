@@ -1,6 +1,7 @@
 import math
 from collections.abc import Mapping
 from dataclasses import replace
+from decimal import Decimal
 from typing import Any, Final, Literal
 
 from power_meter.settings import FIELD_RANGES, MeterType, Settings, StandardBand, validate_field
@@ -45,8 +46,7 @@ def form_from_settings(s: Settings) -> dict[str, str]:
         form[name] = _format(getattr(s, name), decimals=2)
     for name in HARDWARE_FIELDS:
         value: float = getattr(s, name)
-        # Rounding drops the float noise of the multiplication (0.29 * 100 is 28.999...).
-        form[name] = _format(round(value * 100, 9) if name in PERCENT_FIELDS else value, decimals=0)
+        form[name] = _as_percent(value) if name in PERCENT_FIELDS else _format(value, decimals=0)
     return form
 
 
@@ -81,12 +81,18 @@ def _field_value(name: str, raw: str) -> float | str:
     if isinstance(parsed, str):
         return parsed
     if name in PERCENT_FIELDS:
-        fraction = parsed / 100
+        fraction = float(Decimal(raw.strip()) / 100)
         if validate_field(name, fraction) is None:
             return fraction
         low, high = FIELD_RANGES[name]
         return f"Must be between {low * 100:g} and {high * 100:g}"
     return validate_field(name, parsed) or parsed
+
+
+# Percents are scaled in decimal: in binary floating point 0.533 * 100 and 53.3 / 100 both pick up
+# noise, so the stored fraction would drift on every save.
+def _as_percent(fraction: float) -> str:
+    return format((Decimal(repr(fraction)) * 100).normalize(), "f")
 
 
 def _format(value: float, decimals: int) -> str:
