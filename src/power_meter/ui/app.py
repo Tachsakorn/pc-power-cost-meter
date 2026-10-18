@@ -1,6 +1,9 @@
 import logging
+import sys
+import tkinter
 from collections.abc import Callable
 from dataclasses import replace
+from importlib import resources
 from pathlib import Path
 from types import TracebackType
 from typing import Final, Literal
@@ -35,6 +38,20 @@ def palette_for(name: Theme) -> Palette:
     return theme.DARK if name == "dark" else theme.LIGHT
 
 
+def set_window_icon(window: ctk.CTk) -> None:
+    """Replaces customtkinter's default title-bar icon with the app's own."""
+    # Tk reads .ico files only on Windows; other platforms keep their default icon.
+    if sys.platform != "win32":
+        return
+    icon = resources.files("power_meter").joinpath("data/icon.ico")
+    try:
+        with resources.as_file(icon) as path:
+            window.iconbitmap(str(path))
+    except (OSError, tkinter.TclError) as exc:
+        # Only the type: Tk's message includes the icon's full path.
+        logger.warning("Could not set the window icon (%s)", type(exc).__name__)
+
+
 def measured_components(snapshot: PowerSnapshot | None) -> dict[Component, bool]:
     """Which components currently have a measured source. On battery neither part is listed."""
     parts = {part.label: part.measured for part in snapshot.parts} if snapshot else {}
@@ -61,6 +78,7 @@ class App(ctk.CTk):
         self._settings_view: SettingsView | None = None
 
         self.title(TITLE)
+        set_window_icon(self)
         self.geometry(f"{WIDTH}x{HEIGHT}")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self._close)
@@ -166,6 +184,7 @@ def show_already_running() -> None:
     ctk.set_appearance_mode("dark")
     window = ctk.CTk()
     window.title(TITLE)
+    set_window_icon(window)
     window.resizable(False, False)
     painter = Painter(theme.DARK)
     painter.paint(window, fg_color="background")

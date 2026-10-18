@@ -1,3 +1,5 @@
+from importlib import resources
+
 from power_meter.power_model import Part, PowerSnapshot
 from power_meter.ui.app import measured_components
 
@@ -35,3 +37,9 @@ def test_nothing_counts_as_measured_on_battery() -> None:
     )
 
     assert measured_components(snap) == {"cpu": False, "gpu": False}
+
+
+def test_window_icon_ships_with_the_package() -> None:
+    icon = resources.files("power_meter").joinpath("data/icon.ico").read_bytes()
+
+    assert icon[:4] == b"\x00\x00\x01\x00"
