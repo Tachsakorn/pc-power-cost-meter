@@ -195,6 +195,25 @@ def test_battery_that_cannot_be_opened_is_skipped(monkeypatch: pytest.MonkeyPatc
     assert not WindowsBattery(kernel32, setupapi).open()
 
 
+def test_skipped_battery_log_names_no_device_path(caplog: pytest.LogCaptureFixture) -> None:
+    kernel32, setupapi = laptop(-15000, capabilities=0)
+    with caplog.at_level(logging.WARNING):
+        WindowsBattery(kernel32, setupapi).open()
+    assert "battery 1" in caplog.text
+    assert "pnp0c0a" not in caplog.text
+
+
+def test_unopenable_battery_log_names_no_device_path(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    kernel32, setupapi = laptop(-15000)
+    monkeypatch.setattr(kernel32, "CreateFileW", lambda *args: INVALID_HANDLE)
+    with caplog.at_level(logging.WARNING):
+        WindowsBattery(kernel32, setupapi).open()
+    assert "battery 1" in caplog.text
+    assert "pnp0c0a" not in caplog.text
+
+
 def test_battery_status_failure_returns_none_and_logs_once(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

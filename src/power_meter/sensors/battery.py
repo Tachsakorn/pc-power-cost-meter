@@ -242,8 +242,8 @@ class WindowsBattery:
         except (OSError, AttributeError) as exc:
             self._warn("Battery status unavailable: %s", exc)
             return False
-        for path in paths:
-            battery = self._open_battery(path)
+        for number, path in enumerate(paths, start=1):
+            battery = self._open_battery(path, number)
             if battery is not None:
                 self._batteries.append(battery)
         if not self._batteries:
@@ -284,7 +284,9 @@ class WindowsBattery:
             self._kernel32.CloseHandle(battery.handle)
         self._batteries = []
 
-    def _open_battery(self, path: str) -> _Battery | None:
+    def _open_battery(self, path: str, number: int) -> _Battery | None:
+        # Logged by number: a device path holds the hardware instance ID, which can include a
+        # serial number.
         handle = self._kernel32.CreateFileW(
             path,
             _GENERIC_READ_WRITE,
@@ -295,7 +297,7 @@ class WindowsBattery:
             None,
         )
         if handle in (None, _INVALID_HANDLE):
-            self._warn("Can't open battery %s: error %d", path, _last_error())
+            self._warn("Can't open battery %d: error %d", number, _last_error())
             return None
         try:
             tag = ctypes.c_uint32()
@@ -312,7 +314,7 @@ class WindowsBattery:
                 raise OSError("not a system battery")
         except OSError as exc:
             self._kernel32.CloseHandle(handle)
-            self._warn("Skipping battery %s: %s", path, exc)
+            self._warn("Skipping battery %d: %s", number, exc)
             return None
         return _Battery(handle, tag.value, bool(info.Capabilities & BATTERY_CAPACITY_RELATIVE))
 
