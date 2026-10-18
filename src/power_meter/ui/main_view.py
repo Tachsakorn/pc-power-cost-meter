@@ -196,18 +196,12 @@ class MainView:
         label(self._painter, status, "●", self._font_caption, "accent").grid(row=0, column=0)
         self._status = label(self._painter, status, "", self._font_body, "text_muted")
         self._status.grid(row=0, column=1, sticky="w", padx=(S, 0))
-        self._theme_button = icon_button(
-            self._painter, status, "", on_toggle_theme, self._font_icon, ""
-        )
+        self._theme_button = self._hinted_button(status, "", on_toggle_theme)
         self._theme_button.grid(row=0, column=2)
-        icon_button(
-            self._painter,
-            status,
-            self._icons.settings,
-            on_open_settings,
-            self._font_icon,
-            "Settings",
-        ).grid(row=0, column=3, padx=(S, 0))
+        self._settings_button = self._hinted_button(
+            status, self._icons.settings, on_open_settings, "Settings"
+        )
+        self._settings_button.grid(row=0, column=3, padx=(S, 0))
 
         readout = self._row_frame(GAUGE_ROW, sticky="n", pady=(WATTS_TOP, 0))
         self._watts = label(self._painter, readout, "", self._font_power, "text")
@@ -260,14 +254,14 @@ class MainView:
         hours = self._stat_cell(stats, 4, "HOURS A DAY")
         stepper = row(hours)
         stepper.grid(row=1, column=0, sticky="w", pady=(XS, 0))
-        self._hours_down = self._stepper_button(stepper, "−", -1, "Fewer hours a day")
+        self._hours_down = self._stepper_button(stepper, "−", -1)
         self._hours_down.grid(row=0, column=0)
         self._hours_value = ctk.CTkLabel(
             stepper, text="", font=self._font_value, width=28, height=0
         )
         self._painter.paint(self._hours_value, text_color="text")
         self._hours_value.grid(row=0, column=1)
-        self._hours_up = self._stepper_button(stepper, "+", 1, "More hours a day")
+        self._hours_up = self._stepper_button(stepper, "+", 1)
         self._hours_up.grid(row=0, column=2)
 
         self._rule(6, L)
@@ -315,12 +309,13 @@ class MainView:
         self._painter.apply_palette(palette)
         dark = palette == theme.DARK
         set_text(self._theme_button, self._icons.sun if dark else self._icons.moon)
-        self._theme_button.tooltip = "Switch to light mode" if dark else "Switch to dark mode"
+        self._theme_button.hint = "Light mode" if dark else "Dark mode"
         self._show_gauge(self._fraction)
 
     def hide(self) -> None:
         self._visible = False
         self._disarm_reset()
+        self._stage.hide_hint()
         for part in self._parts:
             part.grid_remove()
         self._stage.delete(GAUGE_TAG)
@@ -399,14 +394,31 @@ class MainView:
         value.grid(row=1, column=0, sticky="w", pady=(XS, 0))
         return value
 
-    def _stepper_button(self, master: Any, text: str, step: int, tooltip: str) -> Button:
+    def _hinted_button(
+        self, master: Any, glyph: str, command: Callable[[], None], hint: str = ""
+    ) -> Button:
+        """An icon button that names its action in a hint while hovered or focused."""
+
+        def click() -> None:
+            self._stage.hide_hint()
+            command()
+
+        button = icon_button(self._painter, master, glyph, click, self._font_icon, hint)
+        for sequence in ("<Enter>", "<FocusIn>"):
+            tkinter.Misc.bind(
+                button, sequence, lambda _e: self._stage.show_hint(button.hint, button), add="+"
+            )
+        for sequence in ("<Leave>", "<FocusOut>"):
+            tkinter.Misc.bind(button, sequence, lambda _e: self._stage.hide_hint(), add="+")
+        return button
+
+    def _stepper_button(self, master: Any, text: str, step: int) -> Button:
         return icon_button(
             self._painter,
             master,
             text,
             lambda: self._step_hours(step),
             self._font_body,
-            tooltip,
             size=STEPPER_BUTTON,
         )
 

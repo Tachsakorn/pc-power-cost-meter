@@ -1,7 +1,7 @@
 import random
 import tkinter
 import tkinter.font
-from typing import Final
+from typing import Final, Literal
 
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -21,6 +21,7 @@ GLYPH_GAP: Final = 6
 TOOLTIP_GAP: Final = 8
 TOOLTIP_PAD: Final = (8, 4)
 TOOLTIP_MARGIN: Final = 4
+HINT_GAP: Final = 6
 
 STAR_BRIGHT: Final = "#{:02X}{:02X}{:02X}".format(*CROSS_CENTRE)
 STAR_DIM: Final = "#{:02X}{:02X}{:02X}".format(*CROSS_ARM)
@@ -97,6 +98,18 @@ class Stage(tkinter.Canvas):
         if self._started and self._backdrop_job is None:
             self._backdrop_job = self.after(0, self._refresh_backdrop)
 
+    def show_hint(self, text: str, widget: tkinter.Misc) -> None:
+        """Shows `text` under `widget`, right-aligned with it."""
+        right = widget.winfo_rootx() - self.winfo_rootx() + widget.winfo_width()
+        bottom = widget.winfo_rooty() - self.winfo_rooty() + widget.winfo_height()
+        pad_x, pad_y = self._label_pad()
+        self._draw_label(
+            "hint", text, right - pad_x, bottom + round(HINT_GAP * self._k) + pad_y, "ne"
+        )
+
+    def hide_hint(self) -> None:
+        self.delete("hint")
+
     def place_image(self, tag: str, image: Image.Image, x: int, y: int) -> None:
         photo = self._placed.get(tag)
         exists = bool(self.find_withtag(tag))
@@ -166,7 +179,7 @@ class Stage(tkinter.Canvas):
             return
         self._k = widget_scaling
         self._fit_scene()
-        self.delete("scene", "tooltip")
+        self.delete("scene", "hint", "tooltip")
         self._scene_photo = None
         self._hovering = False
         self._draw_caption()
@@ -299,6 +312,10 @@ class Stage(tkinter.Canvas):
     def _caption_top(self) -> int:
         return self._scene_box[3] + round(CAPTION_GAP * self._k)
 
+    def _label_pad(self) -> tuple[int, int]:
+        pad_x, pad_y = TOOLTIP_PAD
+        return round(pad_x * self._k), round(pad_y * self._k)
+
     def _draw_caption(self) -> None:
         self.delete("caption")
         if not self._caption:
@@ -330,20 +347,26 @@ class Stage(tkinter.Canvas):
         self.delete("tooltip")
         if not self._tooltip:
             return
-        pad_x, pad_y = (round(pad * self._k) for pad in TOOLTIP_PAD)
+        _, pad_y = self._label_pad()
         bottom = self._scene_box[1] - round(TOOLTIP_GAP * self._k) - pad_y
-        text = self.create_text(
-            self.scene_column_px // 2,
-            bottom,
-            text=self._tooltip,
-            anchor="s",
+        self._draw_label("tooltip", self._tooltip, self.scene_column_px // 2, bottom, "s")
+
+    def _draw_label(self, tag: str, text: str, x: int, y: int, anchor: Literal["ne", "s"]) -> None:
+        """Text in a small surface-coloured box, kept on screen and drawn above everything."""
+        self.delete(tag)
+        pad_x, pad_y = self._label_pad()
+        item = self.create_text(
+            x,
+            y,
+            text=text,
+            anchor=anchor,
             fill=self._palette.text,
             font=self._font(),
-            tags="tooltip",
+            tags=tag,
         )
-        left, top, right, bottom = self.bbox(text)
+        left, top, right, bottom = self.bbox(item)
         shift = max(0, TOOLTIP_MARGIN + pad_x - left)
-        self.move(text, shift, 0)
+        self.move(item, shift, 0)
         box = self.create_rectangle(
             left + shift - pad_x,
             top - pad_y,
@@ -351,6 +374,7 @@ class Stage(tkinter.Canvas):
             bottom + pad_y,
             fill=self._palette.surface,
             outline=self._palette.line,
-            tags="tooltip",
+            tags=tag,
         )
-        self.tag_lower(box, text)
+        self.tag_lower(box, item)
+        self.tag_raise(tag)

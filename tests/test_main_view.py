@@ -127,13 +127,72 @@ def test_hide_clears_the_column_and_show_restores_it(stage: Stage) -> None:
     assert stage.find_withtag("gauge") != ()
 
 
+def hint_texts(stage: Stage) -> list[str]:
+    return [
+        stage.itemcget(item, "text")
+        for item in stage.find_withtag("hint")
+        if stage.type(item) == "text"
+    ]
+
+
 def test_theme_button_offers_the_other_theme(stage: Stage) -> None:
     view = make_view(stage)
-    assert view._theme_button.tooltip == "Switch to light mode"
+    assert view._theme_button.hint == "Light mode"
 
     view.apply_palette(LIGHT)
 
-    assert view._theme_button.tooltip == "Switch to dark mode"
+    assert view._theme_button.hint == "Dark mode"
+
+
+def test_icon_button_hint_follows_hover_and_focus(stage: Stage) -> None:
+    view = make_view(stage)
+    button = view._theme_button
+
+    tkinter.Misc.event_generate(button, "<Enter>")
+    assert hint_texts(stage) == ["Light mode"]
+    tkinter.Misc.event_generate(button, "<Leave>")
+    assert hint_texts(stage) == []
+
+    button.focus_force()
+    pump(stage, 0.1)
+    assert hint_texts(stage) == ["Light mode"]
+    stage.focus_force()
+    pump(stage, 0.1)
+    assert hint_texts(stage) == []
+
+
+def test_clicking_an_icon_button_dismisses_its_hint(stage: Stage) -> None:
+    view = make_view(stage)
+    tkinter.Misc.event_generate(view._settings_button, "<Enter>")
+    assert hint_texts(stage) == ["Settings"]
+
+    view._settings_button.invoke()
+
+    assert hint_texts(stage) == []
+
+
+def test_hint_sits_under_its_button_and_inside_the_window(stage: Stage) -> None:
+    view = make_view(stage)
+    button = view._settings_button
+
+    tkinter.Misc.event_generate(button, "<Enter>")
+
+    [box] = [item for item in stage.find_withtag("hint") if stage.type(item) == "rectangle"]
+    left, top, right, _ = stage.coords(box)
+    button_right = button.winfo_rootx() - stage.winfo_rootx() + button.winfo_width()
+    button_bottom = button.winfo_rooty() - stage.winfo_rooty() + button.winfo_height()
+    assert top > button_bottom
+    assert left >= 0
+    assert abs(right - button_right) <= 1
+
+
+def test_hiding_the_dashboard_removes_the_hint(stage: Stage) -> None:
+    view = make_view(stage)
+    tkinter.Misc.event_generate(view._theme_button, "<Enter>")
+
+    view.hide()
+
+    assert hint_texts(stage) == []
 
 
 def test_dashboard_follows_a_scaling_change(

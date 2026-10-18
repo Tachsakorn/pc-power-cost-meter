@@ -47,12 +47,12 @@ class Painter:
 class Button(ctk.CTkButton):
     """A CTkButton that can be reached with Tab, shows a focus ring and responds to Enter/Space.
 
-    `outline` is the border width when unfocused. `tooltip` names a button whose text is an
-    icon glyph."""
+    `outline` is the border width when unfocused. `hint` names the action of a button whose
+    text is an icon glyph."""
 
-    def __init__(self, master: Any, *, outline: int = 0, tooltip: str = "", **kwargs: Any) -> None:
+    def __init__(self, master: Any, *, outline: int = 0, hint: str = "", **kwargs: Any) -> None:
         super().__init__(master, border_width=outline, corner_radius=theme.RADIUS, **kwargs)
-        self.tooltip = tooltip
+        self.hint = hint
         # CTkButton forwards only `cursor` to its frame. Making the frame itself focusable
         # gives one Tab stop per button instead of stops on its inner canvas and label.
         tkinter.Frame.configure(self, takefocus=1)
@@ -117,7 +117,7 @@ def icon_button(
     glyph: str,
     command: Callable[[], None],
     font: Any,
-    tooltip: str,
+    hint: str = "",
     size: int = ICON_BUTTON,
 ) -> Button:
     button = Button(
@@ -128,7 +128,7 @@ def icon_button(
         width=size,
         height=size,
         outline=1,
-        tooltip=tooltip,
+        hint=hint,
     )
     painter.paint(
         button,

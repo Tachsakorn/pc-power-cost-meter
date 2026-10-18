@@ -289,22 +289,45 @@ def test_caption_row_is_kept_clear_before_the_caption_is_drawn(
     assert plain_rows(backdrops[-1], (0, top, stage.scene_column_px, bottom), palette.background)
 
 
-def test_tooltip_is_not_kept_clear(
+def test_hover_labels_are_not_kept_clear(
     window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop]
 ) -> None:
     stage = make_stage(window, art)
+    button = tkinter.Frame(stage, width=32, height=32)
+    button.place(x=700, y=16)
+    pump(window, 0.1)
     stage.request_backdrop()
     pump(window, 0.1)
     without = backdrops[-1]
 
     left, top, right, bottom = stage.bbox("scene")
     stage.event_generate("<Enter>", x=(left + right) // 2, y=(top + bottom) // 2)
+    stage.show_hint("Settings", button)
     stage.request_backdrop()
     pump(window, 0.1)
 
-    assert stage.find_withtag("tooltip")
+    assert stage.find_withtag("tooltip") and stage.find_withtag("hint")
     assert backdrops[-1].image.tobytes() == without.image.tobytes()
     assert backdrops[-1].twinklers == without.twinklers
+
+
+def test_hint_is_drawn_like_the_scene_tooltip(window: ctk.CTk, art: SceneArt) -> None:
+    stage = make_stage(window, art)
+    button = tkinter.Frame(stage, width=32, height=32)
+    button.place(x=700, y=16)
+    pump(window, 0.1)
+
+    stage.show_hint("Settings", button)
+
+    [box] = [item for item in stage.find_withtag("hint") if stage.type(item) == "rectangle"]
+    [text] = [item for item in stage.find_withtag("hint") if stage.type(item) == "text"]
+    assert stage.itemcget(box, "fill") == DARK.surface
+    assert stage.itemcget(box, "outline") == DARK.line
+    assert stage.itemcget(text, "fill") == DARK.text
+    assert stage.find_all()[-1] == text
+
+    stage.hide_hint()
+    assert stage.find_withtag("hint") == ()
 
 
 def test_scene_follows_a_scaling_change(

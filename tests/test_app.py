@@ -120,7 +120,7 @@ def click(window: ctk.CTk, text: str) -> None:
         w
         for w in descendants(window)
         if isinstance(w, ctk.CTkButton)
-        and text in (w.cget("text"), getattr(w, "tooltip", ""))
+        and text in (w.cget("text"), getattr(w, "hint", ""))
         and w.winfo_ismapped()
     ]
     button.invoke()
@@ -290,7 +290,7 @@ def test_backdrop_refreshes_after_settings_and_theme(
         assert_clear_of_widgets(stage, backdrops[-1], DARK.background)
 
         before = len(backdrops)
-        click(app, "Switch to light mode")
+        click(app, "Light mode")
         assert len(backdrops) > before
         assert_clear_of_widgets(stage, backdrops[-1], LIGHT.background)
     finally:
@@ -311,7 +311,7 @@ def test_each_action_draws_the_backdrop_once(
     monkeypatch.setattr(ctk, "set_appearance_mode", recording_set_mode)
     try:
         drawn = []
-        for action in ("Switch to light mode", "Settings", "Cancel", "Settings", "Save"):
+        for action in ("Light mode", "Settings", "Cancel", "Settings", "Save"):
             before = len(backdrops)
             click(app, action)
             drawn.append(len(backdrops) - before)
