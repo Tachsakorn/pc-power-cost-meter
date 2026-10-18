@@ -7,9 +7,28 @@ from typing import Any, Final
 PDH_FMT_DOUBLE: Final = 0x00000200
 PDH_FMT_NOCAP100: Final = 0x00008000
 PDH_MORE_DATA: Final = 0x800007D2
+PDH_NO_DATA: Final = 0x800007D5
+PDH_CALC_NEGATIVE_DENOMINATOR: Final = 0x800007D6
+PDH_CALC_NEGATIVE_TIMEBASE: Final = 0x800007D7
+PDH_CALC_NEGATIVE_VALUE: Final = 0x800007D8
 PDH_CSTATUS_VALID_DATA: Final = 0x00000000
 PDH_CSTATUS_NEW_DATA: Final = 0x00000001
+PDH_CSTATUS_INVALID_DATA: Final = 0xC0000BBA
+PDH_INVALID_DATA: Final = 0xC0000BC6
 ERROR_SUCCESS: Final = 0
+
+# Rate counters have no value for a round in which an instance appeared, exited or restarted
+# (GPU Engine instances belong to processes), so these statuses are expected now and then.
+_NO_DATA_STATUSES: Final = frozenset(
+    {
+        PDH_NO_DATA,
+        PDH_CALC_NEGATIVE_DENOMINATOR,
+        PDH_CALC_NEGATIVE_TIMEBASE,
+        PDH_CALC_NEGATIVE_VALUE,
+        PDH_CSTATUS_INVALID_DATA,
+        PDH_INVALID_DATA,
+    }
+)
 
 
 class CounterValue(ctypes.Structure):
@@ -25,6 +44,16 @@ class PdhError(OSError):
     def __init__(self, function: str, status: int) -> None:
         super().__init__(f"{function} failed with status 0x{status:08X}")
         self.status = status
+
+
+class PdhNoData(PdhError):
+    """The counter has no valid value this round; a later collect may have one."""
+
+
+def _error(function: str, status: int) -> PdhError:
+    if status in _NO_DATA_STATUSES:
+        return PdhNoData(function, status)
+    return PdhError(function, status)
 
 
 def _load_pdh() -> Any:
@@ -81,7 +110,7 @@ class PdhQuery:
         if status == ERROR_SUCCESS:
             return {}
         if status != PDH_MORE_DATA:
-            raise PdhError("PdhGetFormattedCounterArrayW", status)
+            raise _error("PdhGetFormattedCounterArrayW", status)
 
         # Instance names are stored in the same buffer, after the item array.
         buffer = (ctypes.c_byte * size.value)()
@@ -108,4 +137,4 @@ class PdhQuery:
     def _call(self, name: str, *args: object) -> None:
         status = getattr(self._dll, name)(*args)
         if status != ERROR_SUCCESS:
-            raise PdhError(name, status)
+            raise _error(name, status)

@@ -1,10 +1,16 @@
 import pytest
-from fakes import PDH_MORE_DATA, FakePdh
+from fakes import PDH_INVALID_HANDLE, PDH_MORE_DATA, PDH_NO_DATA, FakePdh
 
 from power_meter.sensors.adapters import luid_key
 from power_meter.sensors.energy_meter import ENERGY_METER_POWER, EnergyMeterCpu, sum_package_watts
 from power_meter.sensors.load import CPU_UTILITY, GPU_3D, PdhLoad, gpu_util_by_luid
-from power_meter.sensors.pdh import PDH_FMT_DOUBLE, PDH_FMT_NOCAP100, PdhError, PdhQuery
+from power_meter.sensors.pdh import (
+    PDH_FMT_DOUBLE,
+    PDH_FMT_NOCAP100,
+    PdhError,
+    PdhNoData,
+    PdhQuery,
+)
 
 LUID_A = "0x00000000_0x00015061"
 LUID_B = "0x00000000_0x0000d1a6"
@@ -99,6 +105,44 @@ def test_failed_call_raises_with_status() -> None:
     query = PdhQuery(dll)
     with pytest.raises(PdhError, match="PdhAddEnglishCounterW.*0xC0000BB9"):
         query.add_english(CPU_UTILITY)
+
+
+NO_DATA_STATUSES = {
+    "PDH_NO_DATA": 0x800007D5,
+    "PDH_CALC_NEGATIVE_DENOMINATOR": 0x800007D6,
+    "PDH_CALC_NEGATIVE_TIMEBASE": 0x800007D7,
+    "PDH_CALC_NEGATIVE_VALUE": 0x800007D8,
+    "PDH_CSTATUS_INVALID_DATA": 0xC0000BBA,
+    "PDH_INVALID_DATA": 0xC0000BC6,
+}
+
+
+@pytest.mark.parametrize("status", NO_DATA_STATUSES.values(), ids=NO_DATA_STATUSES.keys())
+def test_values_without_valid_data_raise_no_data(status: int) -> None:
+    dll = FakePdh({CPU_UTILITY: {"_Total": 1.0}})
+    query = PdhQuery(dll)
+    counter = query.add_english(CPU_UTILITY)
+    dll.array_status = status
+    with pytest.raises(PdhNoData, match=f"0x{status:08X}"):
+        query.values(counter)
+
+
+def test_collect_without_data_raises_no_data() -> None:
+    dll = FakePdh({})
+    query = PdhQuery(dll)
+    dll.collect_status = PDH_NO_DATA
+    with pytest.raises(PdhNoData):
+        query.collect()
+
+
+def test_real_failure_is_not_no_data() -> None:
+    dll = FakePdh({CPU_UTILITY: {"_Total": 1.0}})
+    query = PdhQuery(dll)
+    counter = query.add_english(CPU_UTILITY)
+    dll.array_status = PDH_INVALID_HANDLE
+    with pytest.raises(PdhError) as raised:
+        query.values(counter)
+    assert not isinstance(raised.value, PdhNoData)
 
 
 def test_more_data_on_second_call_is_an_error() -> None:

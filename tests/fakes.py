@@ -74,8 +74,11 @@ class FakeLoad:
 
 
 PDH_MORE_DATA = 0x800007D2
+PDH_NO_DATA = 0x800007D5
+PDH_CALC_NEGATIVE_DENOMINATOR = 0x800007D6
 PDH_CSTATUS_NO_COUNTER = 0xC0000BB9
 PDH_CSTATUS_INVALID_DATA = 0xC0000BBA
+PDH_INVALID_HANDLE = 0xC0000BBC
 
 
 class FakePdh:
@@ -86,6 +89,7 @@ class FakePdh:
         self.calls: list[str] = []
         self.formats: list[int] = []
         self.collect_status = 0
+        self.array_status = 0
         self.invalid: set[str] = set()
         self._paths: dict[int, str] = {}
         self._items: object = None
@@ -113,6 +117,8 @@ class FakePdh:
     ) -> int:
         self.calls.append("PdhGetFormattedCounterArrayW")
         self.formats.append(fmt)
+        if self.array_status:
+            return self.array_status
         values = self.counters[self._paths[counter]]
         count.contents.value = len(values)
         if not values:
