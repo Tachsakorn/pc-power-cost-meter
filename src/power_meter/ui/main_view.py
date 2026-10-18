@@ -191,8 +191,10 @@ class MainView(ctk.CTkFrame):
         self._details.grid(row=10, column=0, sticky="ew", padx=XL, pady=(XS, 0))
         self._details.grid_remove()
 
+        # The price line and Reset sit at the bottom of the window; spare height goes above them.
+        self.grid_rowconfigure(11, weight=1)
         price_row = row(self)
-        price_row.grid(row=11, column=0, sticky="ew", padx=XL, pady=(M, 0))
+        price_row.grid(row=11, column=0, sticky="sew", padx=XL, pady=(M, 0))
         self._price = label(self._painter, price_row, "", self._font_caption, "text_muted")
         self._price.grid(row=0, column=0, sticky="w")
         change = ghost_button(

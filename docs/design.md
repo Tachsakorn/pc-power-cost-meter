@@ -270,6 +270,7 @@ Price: Normal meter · ฿4.50 per unit (default)  Change
 - The total cost shows 4 decimal places. Watts are smoothed over the last 3 samples for display only; billing uses raw samples.
 - **Reset** asks for confirmation by changing to "Click again to reset" for 3 s. No modal dialog.
 - Window: fixed at 460 × 560 px. The main view fits without scrolling with details expanded; the settings view scrolls inside the window.
+- The price line and Reset are anchored to the bottom of the window. With details collapsed, the spare height sits between the content and that footer.
 - The theme button in the header switches between dark and light at once and saves the choice. The hours stepper (1–24) saves on every change.
 
 ### Settings view (replaces the main view; Cancel or Esc returns)
