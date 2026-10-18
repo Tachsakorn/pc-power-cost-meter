@@ -54,7 +54,6 @@ class Sampler(threading.Thread):
         super().__init__(name="sampler", daemon=True)
         self._model = model
         self._meter = meter
-        self._settings = settings
         self._holidays = holidays
         self._tariff = tariff_from_settings(settings, holidays)
         self._save_totals = save_totals
@@ -139,7 +138,6 @@ class Sampler(threading.Thread):
             command()
 
     def _use_settings(self, settings: Settings) -> None:
-        self._settings = settings
         self._tariff = tariff_from_settings(settings, self._holidays)
         self._model.update_settings(settings)
 

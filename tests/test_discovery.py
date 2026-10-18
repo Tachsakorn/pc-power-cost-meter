@@ -24,12 +24,11 @@ def load(monkeypatch: pytest.MonkeyPatch) -> OpenableLoad:
     monkeypatch.setattr(discovery, "AdlGpu", lambda: "adl")
     monkeypatch.setattr(discovery, "NvmlGpu", lambda: "nvml")
     monkeypatch.setattr(discovery, "WindowsBattery", lambda: FakeBattery(None))
-    monkeypatch.setattr(discovery, "battery_present", lambda: False)
     return load
 
 
 def test_discovery_chain_order(load: OpenableLoad) -> None:
-    sources = discovery.build_sources(default_settings(is_laptop=False))
+    sources = discovery.build_sources(default_settings(is_laptop=False), is_laptop=False)
     cpu = sources.chains["cpu"]
     gpu = sources.chains["gpu"]
     assert cpu[:-1] == ["rapl"]
@@ -40,7 +39,7 @@ def test_discovery_chain_order(load: OpenableLoad) -> None:
 
 def test_estimators_use_the_shared_load_and_settings_tdp(load: OpenableLoad) -> None:
     settings = default_settings(is_laptop=False)
-    sources = discovery.build_sources(settings)
+    sources = discovery.build_sources(settings, is_laptop=False)
     assert sources.load is load
     assert load.opened
     assert sources.chains["cpu"][-1].read().watts == settings.cpu_tdp_w
@@ -48,13 +47,10 @@ def test_estimators_use_the_shared_load_and_settings_tdp(load: OpenableLoad) -> 
 
 
 def test_desktop_has_no_battery(load: OpenableLoad) -> None:
-    sources = discovery.build_sources(default_settings(is_laptop=False))
+    sources = discovery.build_sources(default_settings(is_laptop=False), is_laptop=False)
     assert sources.battery is None
-    assert not sources.is_laptop
 
 
-def test_laptop_gets_a_battery_source(load: OpenableLoad, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(discovery, "battery_present", lambda: True)
-    sources = discovery.build_sources(default_settings(is_laptop=True))
+def test_laptop_gets_a_battery_source(load: OpenableLoad) -> None:
+    sources = discovery.build_sources(default_settings(is_laptop=True), is_laptop=True)
     assert isinstance(sources.battery, FakeBattery)
-    assert sources.is_laptop

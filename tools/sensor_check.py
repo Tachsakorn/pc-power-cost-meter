@@ -11,7 +11,8 @@ from power_meter.settings import default_settings
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    sources = build_sources(default_settings(battery_present()))
+    is_laptop = battery_present()
+    sources = build_sources(default_settings(is_laptop), is_laptop)
 
     available: list[tuple[Component, PowerSource]] = []
     for component, chain in sources.chains.items():
