@@ -37,6 +37,9 @@ numbers come from real sensors and which are estimates.
 
 For 64-bit Windows 10 and 11; tested on Windows 11 25H2 (see [Tested on](#tested-on)).
 
+To check which version you have, open Settings: the version is shown at the bottom. In Explorer,
+right-click the exe, choose Properties, then the Details tab to see its file version.
+
 ### "Windows protected your PC"
 
 The exe is not code-signed (signing certificates are paid and out of scope for this project), so
@@ -364,7 +367,7 @@ Build the single-file exe:
 pyinstaller packaging\power_meter.spec
 ```
 
-The result is `dist\PCPowerCostMeter.exe`. Pushing a tag such as `v0.1.0` runs the same build on
+The result is `dist\PCPowerCostMeter.exe`. Pushing a tag such as `v0.2.0` runs the same build on
 GitHub Actions and attaches the exe and `SHA256SUMS.txt` to a GitHub release.
 
 The design notes behind the app are in [docs/design.md](docs/design.md).

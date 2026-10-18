@@ -85,7 +85,7 @@ src/power_meter/
     format.py          money, duration, watt and price-line text
     theme.py           design tokens and the contrast-ratio calculation
     widgets.py         shared widgets: buttons, segmented control, dropdown, field, scroll area
-packaging/             PyInstaller spec, Windows version resource, launcher script
+packaging/             PyInstaller spec (builds the Windows version resource), launcher script
 tests/
 tools/sensor_check.py  prints what every power source reads on this PC
 ```
@@ -366,10 +366,10 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 
 ## 10. Build, test, release
 
-- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast); and one smoke test that drives the real window over a fake sampler, skipped when Tk has no display. Sensors are tested against fake DLL objects, so the suite runs on Linux.
+- **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast); and one smoke test that drives the real window over a fake sampler, skipped when Tk has no display; and the version (package attribute equals installed metadata). Sensors are tested against fake DLL objects, so the suite runs on Linux.
 - **Hardware smoke test:** `tools/sensor_check.py` plus a manual checklist run on the desktop and the laptop before each release.
 - **CI (GitHub Actions, `windows-latest`, Python 3.13 and 3.15):** `ruff check .`, `mypy` (strict, configured in `pyproject.toml`), `pytest` on every push and PR.
-- **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.
+- **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. The job fails if the tag isn't `v` plus `power_meter.__version__`, which is the only place the version is written. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.
 - **Repo files:** `README.md` (features, privacy, formula, limitations, how to run, SmartScreen and antivirus guidance, MIT disclaimer), `LICENSE`, `.gitignore`, `pyproject.toml`, and this document.
 - **Antivirus:** unsigned PyInstaller one-file builds can trigger false positives. Mitigations: CI-built and reproducible, no UPX, published hashes, and submission to Microsoft for analysis if flagged. Code signing is out of scope.
 
