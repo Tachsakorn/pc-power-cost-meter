@@ -189,8 +189,8 @@ All rates are all-in Baht per unit: `(energy charge + Ft) × 1.07 VAT`. Defaults
 | Option | Rate |
 |---|---|
 | I don't know (default) | 4.50 |
-| Up to 150 units/month | 3.38 |
-| 151–400 units/month | 4.62 |
+| Up to 200 units/month | 3.38 |
+| 201–400 units/month | 4.62 |
 | Over 400 units/month | 4.84 |
 | Custom | user value, 0.01–100 |
 

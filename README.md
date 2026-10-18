@@ -87,8 +87,8 @@ Ft = +0.1623 ฿/unit (September–December 2026 billing period):
 
 | Option in the app | Tariff tier used | Energy charge | + Ft | × 1.07 VAT = default |
 |---|---|---|---|---|
-| Normal, up to 150 units a month | 26–200 units | 3.0000 | 3.1623 | 3.38 |
-| Normal, 151–400 units a month | 201–400 units | 4.1584 | 4.3207 | 4.62 |
+| Normal, up to 200 units a month | 26–200 units | 3.0000 | 3.1623 | 3.38 |
+| Normal, 201–400 units a month | 201–400 units | 4.1584 | 4.3207 | 4.62 |
 | Normal, over 400 units a month | over 400 units | 4.3583 | 4.5206 | 4.84 |
 | TOU peak | peak | 5.7982 | 5.9605 | 6.38 |
 | TOU off-peak | off-peak | 2.6369 | 2.7992 | 3.00 |

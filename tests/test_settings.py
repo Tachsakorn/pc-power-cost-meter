@@ -43,8 +43,8 @@ def test_shared_defaults() -> None:
     ("band", "rate"),
     [
         (StandardBand.UNKNOWN, 4.50),
-        (StandardBand.UP_TO_150, 3.38),
-        (StandardBand.BAND_151_400, 4.62),
+        (StandardBand.UP_TO_200, 3.38),
+        (StandardBand.BAND_201_400, 4.62),
         (StandardBand.OVER_400, 4.84),
     ],
 )

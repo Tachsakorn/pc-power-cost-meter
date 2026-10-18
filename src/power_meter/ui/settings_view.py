@@ -39,8 +39,8 @@ BAND_OPTIONS: Final = tuple(
     (band, f"{text}฿{STANDARD_BAND_RATES[band]:.2f}")
     for band, text in (
         (StandardBand.UNKNOWN, "I don't know — use "),
-        (StandardBand.UP_TO_150, "Up to 150 units a month — "),
-        (StandardBand.BAND_151_400, "151–400 units a month — "),
+        (StandardBand.UP_TO_200, "Up to 200 units a month — "),
+        (StandardBand.BAND_201_400, "201–400 units a month — "),
         (StandardBand.OVER_400, "Over 400 units a month — "),
     )
 ) + ((StandardBand.CUSTOM, "Custom price…"),)

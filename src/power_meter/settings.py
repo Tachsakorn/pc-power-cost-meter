@@ -12,16 +12,16 @@ class MeterType(StrEnum):
 
 class StandardBand(StrEnum):
     UNKNOWN = "unknown"
-    UP_TO_150 = "up_to_150"
-    BAND_151_400 = "151_400"
+    UP_TO_200 = "up_to_200"
+    BAND_201_400 = "201_400"
     OVER_400 = "over_400"
     CUSTOM = "custom"
 
 
 STANDARD_BAND_RATES: Mapping[StandardBand, float] = {
     StandardBand.UNKNOWN: 4.50,
-    StandardBand.UP_TO_150: 3.38,
-    StandardBand.BAND_151_400: 4.62,
+    StandardBand.UP_TO_200: 3.38,
+    StandardBand.BAND_201_400: 4.62,
     StandardBand.OVER_400: 4.84,
 }
 

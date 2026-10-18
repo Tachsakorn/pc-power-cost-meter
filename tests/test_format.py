@@ -48,7 +48,7 @@ def test_price_line_standard_default() -> None:
 
 
 def test_price_line_standard_known_band() -> None:
-    settings = replace(default_settings(False), standard_band=StandardBand.BAND_151_400)
+    settings = replace(default_settings(False), standard_band=StandardBand.BAND_201_400)
     info = RateInfo(4.62, Period.FLAT, None)
     assert price_line(settings, info) == "Normal meter · ฿4.62 per unit"
 

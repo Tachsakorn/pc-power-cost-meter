@@ -102,11 +102,18 @@ def test_field_defaults_follow_the_hardware_profile(tmp_path: Path) -> None:
 
 
 def test_unknown_meter_type_falls_back(tmp_path: Path) -> None:
-    write_config(tmp_path, meter_type="solar", standard_band=["151_400"], theme="blue")
+    write_config(tmp_path, meter_type="solar", standard_band=["201_400"], theme="blue")
     loaded = load_settings(tmp_path, is_laptop=False)
     assert loaded.meter_type is MeterType.STANDARD
     assert loaded.standard_band is StandardBand.UNKNOWN
     assert loaded.theme == "dark"
+
+
+def test_retired_band_name_loads_as_the_default_band(tmp_path: Path) -> None:
+    write_config(tmp_path, standard_band="up_to_150", other_w=40)
+    loaded = load_settings(tmp_path, is_laptop=False)
+    assert loaded.standard_band is StandardBand.UNKNOWN
+    assert loaded.other_w == 40
 
 
 def test_unknown_keys_are_ignored(tmp_path: Path) -> None:
