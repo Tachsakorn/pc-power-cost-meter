@@ -22,8 +22,6 @@ power_meter = ["data/holidays_th.json", "data/icon.ico"]
 
 [tool.ruff]
 line-length = 100
-# tools/probe.py is a committed hardware-probe script that predates this lint config; kept unmodified.
-extend-exclude = ["tools/probe.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM"]

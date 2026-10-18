@@ -7,6 +7,5 @@ dist/
 *.log
 config.json
 state.json
-tools/probe_*.txt
 *.log.*
 *.bak

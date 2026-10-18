@@ -32,7 +32,7 @@ A small Windows desktop app that shows, in real time, how much electricity a PC 
 
 ## 2. Hardware evidence
 
-Measured with `tools/probe.py` on a desktop with a Ryzen 5 5600, RX 7600 and B450M board, running Windows 11 25H2 and Python 3.15.0 under a standard user account.
+Measured on a desktop with a Ryzen 5 5600, RX 7600 and B450M board, running Windows 11 25H2 and Python 3.15.0 under a standard user account. `tools/sensor_check.py` repeats the CPU, GPU, utilisation and battery readings on any PC.
 
 | Source | Result | Idle | Load |
 |---|---|---|---|
@@ -87,9 +87,7 @@ src/power_meter/
     widgets.py         shared widgets: buttons, segmented control, dropdown, field, scroll area
 packaging/             PyInstaller spec, Windows version resource, launcher script
 tests/
-tools/
-  sensor_check.py      prints what every power source reads on this PC
-  probe.py             earlier hardware diagnostic
+tools/sensor_check.py  prints what every power source reads on this PC
 ```
 
 ### Data flow
@@ -350,7 +348,7 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 ## 10. Build, test, release
 
 - **Tests (pytest):** `tariff` (peak/off-peak boundaries at 09:00 and 22:00, weekends, holidays, crossing midnight); `meter` (trapezoid math, sleep-gap skip, reset); `power_model` (selection, demotion/retry, raising sources, PSU math, battery path, sanity limits); `sampler` (commands, autosave, restart, shutdown); `projection`; `storage` (atomic write, corrupt file, unwritable folder fallback, range validation); the UI's pure parts (view-model, form parsing, formatting, contrast). Sensors are tested against fake DLL objects, so the suite runs on Linux.
-- **Hardware smoke test:** `tools/probe.py` plus a manual checklist run on the desktop and the laptop before each release.
+- **Hardware smoke test:** `tools/sensor_check.py` plus a manual checklist run on the desktop and the laptop before each release.
 - **CI (GitHub Actions, `windows-latest`, Python 3.13 and 3.15):** `ruff check .`, `mypy` (strict, configured in `pyproject.toml`), `pytest` on every push and PR.
 - **Release workflow (tag `v*`):** PyInstaller `--onefile --noconsole`, UPX disabled, Windows version resource, app icon. Uploads `PCPowerCostMeter.exe` and `SHA256SUMS.txt` to the GitHub Release.
 - **Repo files:** `README.md` (features, privacy, formula, limitations, how to run, SmartScreen and antivirus guidance, MIT disclaimer), `LICENSE`, `.gitignore`, `pyproject.toml`, and this document.
@@ -361,8 +359,8 @@ Windows and AMD APIs are called via the standard-library `ctypes`.
 | # | Item | Resolve by |
 |---|---|---|
 | 1 | ADL sensor #73 is `PMLOG_BOARD_POWER` (confirmed from `adl_defines.h`); confirm it is reported on other RDNA GPUs | Testing on other AMD cards |
-| 2 | Laptop: NVML power on RTX 5070 Laptop; whether polling NVML keeps the dGPU awake (hybrid graphics) | Laptop probe before v1.0 |
-| 3 | Laptop: battery discharge rate readable as a standard user; Energy Meter on Ryzen AI | Laptop probe before v1.0 |
+| 2 | Laptop: NVML power on RTX 5070 Laptop; whether polling NVML keeps the dGPU awake (hybrid graphics) | Laptop sensor check before v1.0 |
+| 3 | Laptop: battery discharge rate readable as a standard user; Energy Meter on Ryzen AI | Laptop sensor check before v1.0 |
 | 4 | 2027 holidays are derived from the off-peak rule and the Bank of Thailand 2027 holiday notice; check them against the PEA/MEA 2027 off-peak calendar once it is published. The ERC can also reclassify individual days (as it did for the postponed Songkran in 2020) | Before v1.0 and each January |
 | 5 | AMD RAPL package power is self-reported by the CPU and may differ from external measurement | Documented limitation |
 | 6 | CI runner support for Python 3.15: `actions/setup-python` provides 3.15.0, so CI tests 3.13 and 3.15 | First CI run |
