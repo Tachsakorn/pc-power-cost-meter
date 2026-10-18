@@ -5,7 +5,7 @@ from PIL import Image, ImageColor, ImageDraw
 TICKS = 61
 START_DEGREES = 190
 END_DEGREES = -10
-SUPERSAMPLE = 4
+SUPERSAMPLE = 2
 DESIGN_WIDTH = 320
 
 

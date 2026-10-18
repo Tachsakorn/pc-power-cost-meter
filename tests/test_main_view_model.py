@@ -146,10 +146,16 @@ def test_detail_share_is_zero_when_every_part_is_zero() -> None:
     assert vm.details == (DetailRow("CPU", "0 W", "measured", True, 0.0),)
 
 
+def test_gauge_follows_the_averaged_reading() -> None:
+    state = replace(RUNNING, snapshot=replace(SNAPSHOT, wall_w=150.0), display_w=90.0)
+
+    assert build_view_model(state, SETTINGS, FLAT).gauge_fraction == pytest.approx(0.3)
+
+
 def test_gauge_fraction_is_clamped() -> None:
-    def fraction(wall_w: float, peak_w: float) -> float:
-        snapshot = replace(SNAPSHOT, wall_w=wall_w, peak_w=peak_w)
-        return build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT).gauge_fraction
+    def fraction(display_w: float, peak_w: float) -> float:
+        state = replace(RUNNING, snapshot=replace(SNAPSHOT, peak_w=peak_w), display_w=display_w)
+        return build_view_model(state, SETTINGS, FLAT).gauge_fraction
 
     assert fraction(150.0, 300.0) == 0.5
     assert fraction(400.0, 300.0) == 1.0

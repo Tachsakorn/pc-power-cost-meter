@@ -74,7 +74,7 @@ def build_view_model(
         power = f"{display_w:.0f}"
         per_hour = baht_short(display_w * rate.rate / 1000)
         load = snap.usage_label
-        fraction = min(max(snap.wall_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
+        fraction = min(max(display_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
         peak = watts(snap.peak_w) if snap.peak_w > 0 else ""
         largest = max((part.watts for part in snap.parts), default=0.0)
         details = tuple(
