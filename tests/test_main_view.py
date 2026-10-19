@@ -9,23 +9,31 @@ import pytest
 from PIL import Image
 
 from power_meter.ui import main_view
-from power_meter.ui.gauge import render_gauge
-from power_meter.ui.main_view import ESTIMATES_ONLY, RESTARTING, DetailRow, MainView, MainViewModel
+from power_meter.ui.gauge import margin, render_ring
+from power_meter.ui.main_view import (
+    ESTIMATES_ONLY,
+    RESTARTING,
+    WAITING,
+    DetailRow,
+    MainView,
+    MainViewModel,
+)
 from power_meter.ui.scene.art import SceneArt
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import DARK, LIGHT
 
 BASE = MainViewModel(
-    status="Measuring",
+    status="Live",
     live=True,
     watts="56",
     load="Light use",
     gauge_fraction=0.2,
     peak="276 W",
     spent="0.0134",
-    spent_caption="in 3 min",
+    spent_caption="3 min measured",
     per_hour="฿0.25",
     monthly="≈ ฿39.63",
+    monthly_ready=True,
     hours_per_day=5,
     details=(
         DetailRow("CPU", "18 W", "measured", True, 0.72),
@@ -49,7 +57,7 @@ def stage() -> Iterator[Stage]:
     root.destroy()
 
 
-def make_view(stage: Stage, hours: list[int] | None = None) -> MainView:
+def make_view(stage: Stage, hours: list[int] | None = None, *, animate: bool = False) -> MainView:
     view = MainView(
         stage,
         DARK,
@@ -58,6 +66,7 @@ def make_view(stage: Stage, hours: list[int] | None = None) -> MainView:
         on_toggle_theme=lambda: None,
         on_hours_change=(hours if hours is not None else []).append,
     )
+    view.set_animate(animate)
     view.render(BASE)
     stage.update()
     return view
@@ -80,37 +89,87 @@ def pump(widget: tkinter.Misc, seconds: float = 0.2) -> None:
         time.sleep(0.01)
 
 
-def test_gauge_is_drawn_again_only_when_the_lit_tick_changes(
-    stage: Stage, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.fixture
+def drawn(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     fractions: list[float] = []
 
-    def counting(fraction: float, *args: Any) -> Image.Image:
+    def recording(fraction: float, *args: Any) -> Image.Image:
         fractions.append(fraction)
-        return render_gauge(fraction, *args)
+        return render_ring(fraction, *args)
 
-    monkeypatch.setattr(main_view, "render_gauge", counting)
+    monkeypatch.setattr(main_view, "render_ring", recording)
+    return fractions
+
+
+def test_ring_is_drawn_again_only_when_its_sweep_changes(stage: Stage, drawn: list[float]) -> None:
     view = make_view(stage)
-    drawn = len(fractions)
+    count = len(drawn)
 
-    view.render(replace(BASE, gauge_fraction=0.201))
-    assert len(fractions) == drawn
+    view.render(replace(BASE, gauge_fraction=0.20001))
+    assert len(drawn) == count
 
     view.render(replace(BASE, gauge_fraction=0.5))
-    assert fractions[-1] == 0.5
-    assert len(fractions) == drawn + 1
+    assert drawn[-1] == pytest.approx(0.5)
+    assert len(drawn) == count + 1
 
 
-def test_gauge_sits_centred_in_the_dashboard_column(stage: Stage) -> None:
+def test_ring_eases_towards_a_new_reading(stage: Stage, drawn: list[float]) -> None:
+    view = make_view(stage, animate=True)
+
+    view.render(replace(BASE, gauge_fraction=0.8))
+    assert 0.2 < drawn[-1] < 0.8
+
+    pump(stage, 1.0)
+    assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
+    steps = drawn[drawn.index(next(f for f in drawn if f > 0.2)) :]
+    assert steps == sorted(steps)
+
+
+def test_small_changes_are_drawn_at_once(stage: Stage, drawn: list[float]) -> None:
+    view = make_view(stage, animate=True)
+
+    view.render(replace(BASE, gauge_fraction=0.21))
+
+    assert drawn[-1] == pytest.approx(0.21, abs=1e-3)
+
+
+def test_turning_animation_off_finishes_the_ease(stage: Stage, drawn: list[float]) -> None:
+    view = make_view(stage, animate=True)
+    view.render(replace(BASE, gauge_fraction=0.8))
+
+    view.set_animate(False)
+
+    assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
+    pump(stage, 0.2)
+    assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
+
+
+def test_ring_is_centred_on_the_stage_ring(stage: Stage) -> None:
     make_view(stage)
 
-    left, top, right, _ = stage.bbox("gauge")
-    column_x, row_y, column_w, _ = stage.grid_bbox(1, main_view.GAUGE_ROW)
-    pad_left, pad_right = main_view.PAD
+    left, top, right, bottom = stage.bbox("ring")
+    ring = stage.ring
+    assert right - left == 2 * (ring.radius + margin(1.0))
+    assert ((left + right) // 2, (top + bottom) // 2) == (ring.x, ring.y)
 
-    assert right - left == main_view.GAUGE_W
-    assert top == row_y
-    assert left - (column_x + pad_left) == (column_x + column_w - pad_right) - right
+
+def test_readout_sits_under_the_dome(stage: Stage) -> None:
+    view = make_view(stage)
+
+    readout = view._readout
+    middle = readout.winfo_x() + readout.winfo_width() / 2
+    assert abs(middle - stage.ring.x) <= 1
+    assert readout.winfo_y() > stage.scene_bottom
+
+
+def test_scale_ends_sit_outside_the_ring(stage: Stage) -> None:
+    view = make_view(stage)
+
+    zero, peak = view._zero, view._peak
+    ring = stage.ring
+    assert zero.winfo_x() + zero.winfo_width() <= ring.x - ring.radius * 0.7
+    assert peak.winfo_x() >= ring.x + ring.radius * 0.7
+    assert peak.winfo_x() + peak.winfo_width() <= stage.scene_column_px
 
 
 def test_hide_clears_the_column_and_show_restores_it(stage: Stage) -> None:
@@ -120,12 +179,12 @@ def test_hide_clears_the_column_and_show_restores_it(stage: Stage) -> None:
     view.hide()
     stage.update()
     assert mapped_children(stage) == []
-    assert stage.find_withtag("gauge") == ()
+    assert stage.find_withtag("ring") == ()
 
     view.show()
     stage.update()
     assert len(mapped_children(stage)) == shown
-    assert stage.find_withtag("gauge") != ()
+    assert stage.find_withtag("ring") != ()
 
 
 def hint_texts(stage: Stage) -> list[str]:
@@ -222,11 +281,11 @@ def test_dashboard_follows_a_scaling_change(
     set_scaling(1.5)
     pump(stage, 0.3)
 
-    left, _, right, _ = stage.bbox("gauge")
-    assert right - left == round(main_view.GAUGE_W * 1.5)
-    assert stage.grid_rowconfigure(main_view.GAUGE_ROW)["minsize"] == round(
-        main_view.GAUGE_ROW_H * 1.5
-    )
+    left, top, right, bottom = stage.bbox("ring")
+    ring = stage.ring
+    assert right - left == 2 * (ring.radius + margin(1.5))
+    assert ((left + right) // 2, (top + bottom) // 2) == (ring.x, ring.y)
+    assert view._readout.winfo_y() > stage.scene_bottom
     assert {int(cells.track.cget("height")) for cells in view._detail_cells} == {
         round(main_view.BAR_H * 1.5)
     }
@@ -250,6 +309,31 @@ def test_detail_bars_follow_each_share(stage: Stage) -> None:
     widths = [float(cells.fill.place_info()["relwidth"]) for cells in view._detail_cells]
 
     assert widths == [0.72, 1.0]
+
+
+def test_breakdown_says_when_there_is_no_reading_yet(stage: Stage) -> None:
+    view = make_view(stage)
+    assert not view._no_details.winfo_ismapped()
+
+    view.render(replace(BASE, details=()))
+    stage.update()
+    assert view._no_details.winfo_ismapped()
+    assert view._no_details.cget("text") == WAITING
+
+    view.render(BASE)
+    stage.update()
+    assert not view._no_details.winfo_ismapped()
+
+
+def test_monthly_is_muted_until_ready(stage: Stage) -> None:
+    view = make_view(stage)
+    assert view._monthly.cget("text_color") == DARK.text
+
+    view.render(replace(BASE, monthly="ready in 30 s", monthly_ready=False))
+    assert view._monthly.cget("text_color") == DARK.text_muted
+
+    view.render(BASE)
+    assert view._monthly.cget("text_color") == DARK.text
 
 
 def test_detail_rows_are_rebuilt_when_the_parts_change(stage: Stage) -> None:

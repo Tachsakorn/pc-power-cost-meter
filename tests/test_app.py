@@ -17,11 +17,12 @@ from power_meter.sampler import MeterState, Sampler
 from power_meter.settings import MeterType, Settings, default_settings
 from power_meter.tariff import HolidayCalendar
 from power_meter.ui import app as app_module
+from power_meter.ui import main_view as main_view_module
 from power_meter.ui import stage as stage_module
 from power_meter.ui.app import HEIGHT, WIDTH, App, measured_components
-from power_meter.ui.main_view import GAUGE_ROW, PAD, RESET_MIN_GAP_S
+from power_meter.ui.gauge import margin, render_ring
+from power_meter.ui.main_view import RESET_MIN_GAP_S
 from power_meter.ui.scene.backdrop import Backdrop
-from power_meter.ui.scene.state import SceneState, caption
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import DARK, LIGHT
 from power_meter.ui.widgets import HAIR_SPACE, Checkbox
@@ -237,10 +238,6 @@ def assert_clear_of_widgets(stage: Stage, backdrop: Backdrop, background: str) -
             assert right <= x0 or left >= x1 or bottom <= y0 or top >= y1
 
 
-def caption_text(stage: Stage) -> str:
-    return " ".join(stage.itemcget(item, "text") for item in stage.find_withtag("caption"))
-
-
 def pending_ticks(app: App) -> int:
     jobs = app.tk.splitlist(app.tk.call("after", "info"))
     return sum("_advance" in str(app.tk.call("after", "info", job)[0]) for job in jobs)
@@ -323,32 +320,14 @@ def test_each_action_draws_the_backdrop_once(
 
 
 @pytest.mark.parametrize(("name", "palette"), [("dark", DARK), ("light", LIGHT)])
-def test_first_backdrop_follows_the_caption_and_leaves_its_row_clear(
-    tmp_path: Path,
-    backdrops: list[Backdrop],
-    monkeypatch: pytest.MonkeyPatch,
-    name: str,
-    palette: Any,
+def test_first_backdrop_is_laid_out_around_the_dashboard(
+    tmp_path: Path, backdrops: list[Backdrop], name: str, palette: Any
 ) -> None:
-    captions: list[str] = []
-    original = Stage._render_backdrop
-
-    def render(stage: Stage, width: int, height: int) -> None:
-        captions.append(caption_text(stage))
-        original(stage, width, height)
-
-    monkeypatch.setattr(Stage, "_render_backdrop", render)
     settings = replace(default_settings(is_laptop=False), theme=name)
     app = open_app(tmp_path, FakeSampler(), settings)
     try:
-        stage = stage_of(app)
         assert len(backdrops) == 1
-        assert caption(SceneState.ACTIVE) in captions[0]
-        plain = Image.new("RGB", (1, 1), palette.background).getpixel((0, 0))
-        _, top, _, bottom = stage.bbox("caption")
-        colours = backdrops[0].image.crop((0, top, stage.scene_column_px, bottom)).getcolors()
-        assert colours is not None
-        assert {colour for _, colour in colours} == {plain}
+        assert_clear_of_widgets(stage_of(app), backdrops[0], palette.background)
     finally:
         close(app)
 
@@ -363,31 +342,29 @@ def test_layout_follows_a_scaling_change_after_startup(
         pump(app, 0.5)
 
         assert (stage.winfo_width(), stage.winfo_height()) == (1140, 900)
-        assert stage.grid_columnconfigure(0)["minsize"] == 450
+        assert stage.grid_columnconfigure(0)["minsize"] == 540
         assert stage.pixel_size == 3
-        left, _, right, _ = stage.bbox("gauge")
-        assert right - left == 480
-        column_x, _, column_w, _ = stage.grid_bbox(1, GAUGE_ROW)
-        pad_left, pad_right = (round(pad * 1.5) for pad in PAD)
-        assert abs((left - column_x - pad_left) - (column_x + column_w - pad_right - right)) <= 1
+        left, top, right, bottom = stage.bbox("ring")
+        assert right - left == 2 * (stage.ring.radius + margin(1.5))
+        assert ((left + right) // 2, (top + bottom) // 2) == (stage.ring.x, stage.ring.y)
         assert backdrops[-1].image.size == (1140, 900)
         assert_clear_of_widgets(stage, backdrops[-1], DARK.background)
     finally:
         close(app)
 
 
-def test_scene_caption_follows_sampler_status(tmp_path: Path) -> None:
+def test_status_follows_the_sampler(tmp_path: Path) -> None:
     sampler = FakeSampler()
     running = sampler.state
     sampler.state = replace(running, snapshot=None, status="warming_up", display_w=None)
     app = open_app(tmp_path, sampler)
-    stage = stage_of(app)
+    status = app._main_view._status
     try:
-        assert "Waiting for live data" in caption_text(stage)
+        assert status.cget("text") == "Starting up"
 
         sampler.state = running
         pump(app)
-        assert caption(SceneState.ACTIVE) in caption_text(stage)
+        assert status.cget("text") == "Live"
     finally:
         close(app)
 
@@ -561,5 +538,28 @@ def test_scene_stays_still_when_windows_animations_are_off(
     app = open_app(tmp_path, FakeSampler())
     try:
         assert pending_ticks(app) == 0
+    finally:
+        close(app)
+
+
+def test_ring_jumps_to_new_readings_when_windows_animations_are_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(app_module, "windows_animations_enabled", lambda: False)
+    drawn: list[float] = []
+
+    def recording(fraction: float, *args: Any) -> Image.Image:
+        drawn.append(fraction)
+        return render_ring(fraction, *args)
+
+    monkeypatch.setattr(main_view_module, "render_ring", recording)
+    sampler = FakeSampler()
+    app = open_app(tmp_path, sampler)
+    try:
+        sampler.state = replace(sampler.state, display_w=270.0)
+        pump(app)
+
+        assert drawn[-1] == pytest.approx(0.9, abs=1e-3)
+        assert all(f == pytest.approx(1 / 3, abs=1e-3) for f in drawn[:-1])
     finally:
         close(app)

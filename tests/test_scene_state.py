@@ -3,7 +3,7 @@ import pytest
 from power_meter.meter import Totals
 from power_meter.power_model import PowerSnapshot
 from power_meter.sampler import MeterState, Status
-from power_meter.ui.scene.state import SceneState, StateTracker, caption, describe
+from power_meter.ui.scene.state import SceneState, StateTracker, describe
 
 
 class FakeClock:
@@ -136,10 +136,3 @@ def test_describe_reads_like_the_panel() -> None:
 
 def test_describe_without_a_reading_waits() -> None:
     assert describe(SceneState.HIGH, None) == "Waiting for live readings"
-
-
-def test_caption_names_state_and_live_status() -> None:
-    assert caption(SceneState.ACTIVE) == "Active · following live data"
-    assert caption(SceneState.IDLE) == "Idle · following live data"
-    assert caption(SceneState.HIGH) == "High load · following live data"
-    assert caption(SceneState.DORMANT) == "Waiting for live data"

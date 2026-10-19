@@ -13,6 +13,7 @@ XS, S, M, L, XL = theme.SPACE
 FOCUS_RING_W: Final = 2
 CONTROL_H: Final = 36
 UNIT_W: Final = 64
+ENTRY_W: Final = 80
 ICON_BUTTON: Final = 32
 BOX_SIZE: Final = 20
 BOX_RADIUS: Final = 5
@@ -362,7 +363,9 @@ class Dropdown[T](ctk.CTkFrame):
 
 
 class Field(ctk.CTkFrame):
-    """A labelled number box with its unit, a caption under the label and room for an error."""
+    """A labelled number box with its unit, a caption under the label and room for an error.
+
+    The caption wraps so that the field fits in `width`."""
 
     def __init__(
         self,
@@ -375,6 +378,7 @@ class Field(ctk.CTkFrame):
         *,
         font: Any,
         caption_font: Any,
+        width: int,
     ) -> None:
         super().__init__(master, corner_radius=0, fg_color="transparent")
         self._painter = painter
@@ -384,11 +388,12 @@ class Field(ctk.CTkFrame):
 
         label(painter, self, title, font, "text").grid(row=0, column=0, sticky="sw")
         self._caption = label(painter, self, caption, caption_font, "text_muted")
+        self._caption.configure(wraplength=width - ENTRY_W - M - S - UNIT_W)
         self._caption.grid(row=1, column=0, sticky="nw")
         self.entry = ctk.CTkEntry(
             self,
             textvariable=variable,
-            width=80,
+            width=ENTRY_W,
             height=CONTROL_H,
             corner_radius=theme.RADIUS,
             font=font,

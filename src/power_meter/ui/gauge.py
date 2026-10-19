@@ -1,36 +1,74 @@
 import math
+from typing import Final, NamedTuple
 
 from PIL import Image, ImageColor, ImageDraw
 
-TICKS = 61
-START_DEGREES = 190
-END_DEGREES = -10
-SUPERSAMPLE = 2
-DESIGN_WIDTH = 320
+# PIL angles: degrees clockwise from three o'clock. The ring opens at the bottom, under the dome.
+START_DEGREES: Final = 140.0
+SWEEP_DEGREES: Final = 260.0
+STROKE: Final = 6
+TICK_GAP: Final = 5
+TICK_MAJOR: Final = 8
+TICK_MINOR: Final = 4
+TICKS: Final = 41
+SUPERSAMPLE: Final = 2
+
+type Point = tuple[float, float]
 
 
-def render_gauge(fraction: float, accent: str, track: str, width: int, height: int) -> Image.Image:
-    lit = 0 if math.isnan(fraction) else round(min(max(fraction, 0.0), 1.0) * (TICKS - 1))
-    k = width / DESIGN_WIDTH * SUPERSAMPLE
-    canvas = Image.new("RGBA", (width * SUPERSAMPLE, height * SUPERSAMPLE), (0, 0, 0, 0))
+class RingColours(NamedTuple):
+    value: str
+    track: str
+    tick: str
+    major_tick: str
+
+
+def margin(k: float) -> int:
+    """How far the ring's drawing reaches beyond its radius, at UI scale `k`."""
+    return math.ceil((STROKE / 2 + TICK_GAP + TICK_MAJOR + 1) * k)
+
+
+def on_ring(radius: float, fraction: float) -> Point:
+    """The point `fraction` of the way along the ring, relative to its centre."""
+    angle = math.radians(START_DEGREES + SWEEP_DEGREES * fraction)
+    return radius * math.cos(angle), radius * math.sin(angle)
+
+
+def render_ring(fraction: float, colours: RingColours, radius: int, k: float) -> Image.Image:
+    """A square, transparent image with the ring at its centre, lit up to `fraction`."""
+    fraction = 0.0 if math.isnan(fraction) else min(max(fraction, 0.0), 1.0)
+    half = radius + margin(k)
+    canvas = Image.new("RGBA", (2 * half * SUPERSAMPLE,) * 2, (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    centre_x, centre_y = width / 2 * SUPERSAMPLE, height * SUPERSAMPLE - 32 * k
-    radius = 118 * k
-    lit_colour = ImageColor.getrgb(accent)
-    unlit_colour = ImageColor.getrgb(track)
+    centre = half * SUPERSAMPLE
+    r = radius * SUPERSAMPLE
+    stroke = STROKE * k * SUPERSAMPLE
 
+    def point(at: float, distance: float) -> Point:
+        x, y = on_ring(distance, at)
+        return centre + x, centre + y
+
+    def arc(upto: float, colour: str) -> None:
+        rgb = ImageColor.getrgb(colour)
+        outer = r + stroke / 2
+        box = (centre - outer, centre - outer, centre + outer, centre + outer)
+        end = START_DEGREES + SWEEP_DEGREES * upto
+        draw.arc(box, START_DEGREES, end, fill=rgb, width=round(stroke))
+        for x, y in (point(0.0, r), point(upto, r)):
+            draw.ellipse((x - stroke / 2, y - stroke / 2, x + stroke / 2, y + stroke / 2), fill=rgb)
+
+    arc(1.0, colours.track)
+    if fraction > 0:
+        arc(fraction, colours.value)
+
+    inner = r + stroke / 2 + TICK_GAP * k * SUPERSAMPLE
     for i in range(TICKS):
-        angle = math.radians(START_DEGREES + (END_DEGREES - START_DEGREES) * i / (TICKS - 1))
-        length = (14 if i % 10 == 0 else 9) * k
-        thickness = 1.6 * k
-        if i == lit:
-            length, thickness = 22 * k, 2.2 * k
-        colour = lit_colour if i <= lit else unlit_colour
-        cos, sin = math.cos(angle), math.sin(angle)
-        outer = (centre_x + radius * cos, centre_y - radius * sin)
-        inner = (centre_x + (radius - length) * cos, centre_y - (radius - length) * sin)
-        draw.line([outer, inner], fill=colour, width=round(thickness))
-        cap = thickness / 2
-        for x, y in (outer, inner):
-            draw.ellipse((x - cap, y - cap, x + cap, y + cap), fill=colour)
-    return canvas.resize((width, height), Image.Resampling.LANCZOS)
+        major = i % 10 == 0
+        length = (TICK_MAJOR if major else TICK_MINOR) * k * SUPERSAMPLE
+        at = i / (TICKS - 1)
+        draw.line(
+            (point(at, inner), point(at, inner + length)),
+            fill=ImageColor.getrgb(colours.major_tick if major else colours.tick),
+            width=max(1, round(k * SUPERSAMPLE)),
+        )
+    return canvas.reduce(SUPERSAMPLE)

@@ -1,7 +1,6 @@
 import random
 import tkinter
-import tkinter.font
-from typing import Final, Literal
+from typing import Final, Literal, NamedTuple
 
 import customtkinter as ctk
 from PIL import Image, ImageTk
@@ -14,10 +13,15 @@ from power_meter.ui.theme import FONT_FAMILY, SIZE_CAPTION, Palette
 TICK_MS: Final = 125
 TWINKLE_EVERY: Final = 8
 TWINKLES_PER_STEP: Final = 2
-SCENE_HEIGHT: Final = 320
-SCENE_TOP_NATIVE: Final = 84
-CAPTION_GAP: Final = 12
-GLYPH_GAP: Final = 6
+WINDOW: Final = (760, 600)
+SCENE_COLUMN: Final = 360
+# The power ring around the dome, in the art's native pixels: its centre, a radius that clears
+# the dome's knob and the rim of its base, and the width the ring needs with its ticks. The
+# scene is drawn at the largest whole scale that fits that width in the scene column.
+RING_CENTRE_NATIVE: Final = (64, 82)
+RING_RADIUS_NATIVE: Final = 72
+RING_SPAN_NATIVE: Final = 168
+RING_CENTRE_Y: Final = 256
 TOOLTIP_GAP: Final = 8
 TOOLTIP_PAD: Final = (8, 4)
 TOOLTIP_MARGIN: Final = 4
@@ -27,12 +31,14 @@ STAR_BRIGHT: Final = "#{:02X}{:02X}{:02X}".format(*CROSS_CENTRE)
 STAR_DIM: Final = "#{:02X}{:02X}{:02X}".format(*CROSS_ARM)
 
 
-def pixel_scale(available: tuple[int, int], native: tuple[int, int]) -> int:
-    return max(1, min(available[0] // native[0], available[1] // native[1]))
+class Ring(NamedTuple):
+    x: int
+    y: int
+    radius: int
 
 
 class Stage(tkinter.Canvas):
-    """Window-filling canvas: pixel backdrop, the animated dome scene and its caption.
+    """Window-filling canvas: pixel backdrop and the animated dome scene.
 
     Views are gridded straight onto the stage, right of the scene column; call
     `request_backdrop` after the layout changes so the decorations keep clear of them.
@@ -44,18 +50,15 @@ class Stage(tkinter.Canvas):
         palette: Palette,
         daylight: bool,
         art: SceneArt,
-        scene_box: tuple[int, int] = (300, 600),
     ) -> None:
         super().__init__(master, highlightthickness=0, bd=0, bg=palette.background)
-        self._scene_area = scene_box
+        self._art = art
         self._k: float = ctk.ScalingTracker.get_widget_scaling(self)
         self._fit_scene()
 
         self._palette = palette
         self._daylight = daylight
-        self._art = art
         self._state = SceneState.DORMANT
-        self._caption = ""
         self._tooltip = ""
         self._hovering = False
         self._animate = True
@@ -85,7 +88,6 @@ class Stage(tkinter.Canvas):
         self._palette = palette
         self._daylight = daylight
         self.configure(bg=palette.background)
-        self._draw_caption()
         if self._hovering:
             self._draw_tooltip()
         self.request_backdrop()
@@ -125,12 +127,10 @@ class Stage(tkinter.Canvas):
         else:
             self.create_image(x, y, anchor="nw", image=photo, tags=tag)
 
-    def show_scene(self, state: SceneState, caption: str, tooltip: str) -> None:
+    def show_scene(self, state: SceneState, tooltip: str) -> None:
         changed = state is not self._state
         self._state = state
-        self._caption = caption
         self._tooltip = tooltip
-        self._draw_caption()
         if self._hovering:
             self._draw_tooltip()
         if changed and self._started and not self._animate:
@@ -166,13 +166,23 @@ class Stage(tkinter.Canvas):
         super().destroy()
 
     def _fit_scene(self) -> None:
-        self.scene_column_px = round(self._scene_area[0] * self._k)
-        self.configure(width=self.scene_column_px, height=round(self._scene_area[1] * self._k))
+        """Sizes the scene to whole pixels that leave room for the ring in the scene column,
+        and centres the ring in that column."""
+        self.scene_column_px = round(SCENE_COLUMN * self._k)
+        self.configure(width=self.scene_column_px, height=round(WINDOW[1] * self._k))
         self.grid_columnconfigure(0, minsize=self.scene_column_px)
-        self.pixel_size = pixel_scale((self.scene_column_px, round(SCENE_HEIGHT * self._k)), NATIVE)
-        width, height = NATIVE[0] * self.pixel_size, NATIVE[1] * self.pixel_size
-        left, top = (self.scene_column_px - width) // 2, SCENE_TOP_NATIVE * self.pixel_size
-        self._scene_box: Rect = (left, top, left + width, top + height)
+        scale = self.pixel_size = max(1, self.scene_column_px // RING_SPAN_NATIVE)
+        self.ring = Ring(
+            self.scene_column_px // 2, round(RING_CENTRE_Y * self._k), RING_RADIUS_NATIVE * scale
+        )
+        left = self.ring.x - RING_CENTRE_NATIVE[0] * scale
+        top = self.ring.y - RING_CENTRE_NATIVE[1] * scale
+        self._scene_box: Rect = (left, top, left + NATIVE[0] * scale, top + NATIVE[1] * scale)
+
+    @property
+    def scene_bottom(self) -> int:
+        """The bottom edge of the dome's base on the stage."""
+        return self._scene_box[1] + self._art.bottom * self.pixel_size
 
     def _rescale(self, widget_scaling: float, _window_scaling: float) -> None:
         if widget_scaling == self._k:
@@ -182,7 +192,6 @@ class Stage(tkinter.Canvas):
         self.delete("scene", "hint", "tooltip")
         self._scene_photo = None
         self._hovering = False
-        self._draw_caption()
         self.request_backdrop()
 
     def _refresh_backdrop(self) -> None:
@@ -231,9 +240,7 @@ class Stage(tkinter.Canvas):
         self.delete("tooltip")
 
     def _keep_clear(self) -> list[Rect]:
-        caption_top = self._caption_top()
-        line = tkinter.font.Font(root=self, font=self._font()).metrics("linespace")
-        rects = [self._scene_box, (0, caption_top, self.scene_column_px, caption_top + line)]
+        rects = [self._scene_box]
         for tag in self._placed:
             box = self.bbox(tag)
             if box:
@@ -302,6 +309,9 @@ class Stage(tkinter.Canvas):
         if self._scene_photo is None:
             self._scene_photo = ImageTk.PhotoImage(scene)
             self.create_image(left, top, anchor="nw", image=self._scene_photo, tags="scene")
+            # Placed images such as the power ring overlap the scene's corners.
+            for tag in self._placed:
+                self.tag_raise(tag)
         else:
             self._scene_photo.paste(scene)
 
@@ -309,39 +319,9 @@ class Stage(tkinter.Canvas):
         # Negative sizes are pixels, matching how customtkinter scales its own fonts.
         return (FONT_FAMILY, -round(SIZE_CAPTION * self._k))
 
-    def _caption_top(self) -> int:
-        return self._scene_box[3] + round(CAPTION_GAP * self._k)
-
     def _label_pad(self) -> tuple[int, int]:
         pad_x, pad_y = TOOLTIP_PAD
         return round(pad_x * self._k), round(pad_y * self._k)
-
-    def _draw_caption(self) -> None:
-        self.delete("caption")
-        if not self._caption:
-            return
-        y = self._caption_top()
-        glyph = "○" if self._state is SceneState.DORMANT else "●"
-        mark = self.create_text(
-            0,
-            y,
-            text=glyph,
-            anchor="nw",
-            fill=self._palette.accent,
-            font=self._font(),
-            tags="caption",
-        )
-        self.create_text(
-            self.bbox(mark)[2] + round(GLYPH_GAP * self._k),
-            y,
-            text=self._caption,
-            anchor="nw",
-            fill=self._palette.text_muted,
-            font=self._font(),
-            tags="caption",
-        )
-        left, _, right, _ = self.bbox("caption")
-        self.move("caption", (self.scene_column_px - (right - left)) // 2 - left, 0)
 
     def _draw_tooltip(self) -> None:
         self.delete("tooltip")

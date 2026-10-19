@@ -154,6 +154,9 @@ class SceneArt:
         self._canopy = [canopy.crop((i * width, 0, (i + 1) * width, height)) for i in range(3)]
         self._glass = glass
         self._base = read_palette(back)
+        # Index 0 is the clear colour, so this is the bottom edge of what is drawn.
+        box = back.getbbox()
+        self.bottom = box[3] if box else height
         self._looks: dict[tuple[SceneState, bool], _Look] = {}
 
     @classmethod

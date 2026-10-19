@@ -20,16 +20,16 @@ from power_meter.ui import theme
 from power_meter.ui.main_view import ROW_COUNT, MainView, build_view_model
 from power_meter.ui.scene.art import SceneArt
 from power_meter.ui.scene.motion import windows_animations_enabled
-from power_meter.ui.scene.state import StateTracker, caption, describe
+from power_meter.ui.scene.state import StateTracker, describe
 from power_meter.ui.settings_view import SettingsView
-from power_meter.ui.stage import Stage
+from power_meter.ui.stage import WINDOW, Stage
 from power_meter.ui.theme import Palette
 from power_meter.ui.widgets import CONTROL_H, Button, Painter, label
 
 type Theme = Literal["dark", "light"]
 
 TITLE: Final = "PC Power & Cost Meter"
-WIDTH, HEIGHT = 760, 600
+WIDTH, HEIGHT = WINDOW
 POLL_MS: Final = 250
 NO_DATA_DIR: Final = "None — no writable folder on this PC"
 
@@ -134,7 +134,7 @@ class App(ctk.CTk):
         state = self._sampler.latest()
         self._main_view.render(build_view_model(state, self._settings, rate, can_save=can_save))
         scene = self._tracker.update(state)
-        self._stage.show_scene(scene, caption(scene), describe(scene, state.snapshot))
+        self._stage.show_scene(scene, describe(scene, state.snapshot))
 
     def _use_settings(self, settings: Settings) -> None:
         self._settings = settings
@@ -151,7 +151,9 @@ class App(ctk.CTk):
         self._apply_animation()
 
     def _apply_animation(self) -> None:
-        self._stage.set_animate(self._settings.animate_scene and windows_animations_enabled())
+        animate = self._settings.animate_scene and windows_animations_enabled()
+        self._stage.set_animate(animate)
+        self._main_view.set_animate(animate)
 
     def _apply_theme(self, name: Theme) -> None:
         if name == self._theme:

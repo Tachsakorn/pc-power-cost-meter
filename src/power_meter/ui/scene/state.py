@@ -23,11 +23,6 @@ _LABELS = {
     SceneState.ACTIVE: "Working",
     SceneState.HIGH: "High load",
 }
-_CAPTIONS = {
-    SceneState.IDLE: "Idle",
-    SceneState.ACTIVE: "Active",
-    SceneState.HIGH: "High load",
-}
 
 
 def _load_ratio(snapshot: PowerSnapshot) -> float:
@@ -86,9 +81,3 @@ def describe(scene: SceneState, snapshot: PowerSnapshot | None) -> str:
         return "Waiting for live readings"
     pct = _load_ratio(snapshot) * 100
     return f"{_LABELS[scene]} — {snapshot.wall_w:.0f} W, {pct:.0f}% of this PC's maximum"
-
-
-def caption(scene: SceneState) -> str:
-    if scene is SceneState.DORMANT:
-        return "Waiting for live data"
-    return f"{_CAPTIONS[scene]} · following live data"

@@ -16,6 +16,7 @@ from power_meter.ui.form import (
     form_from_settings,
     settings_from_form,
 )
+from power_meter.ui.stage import SCENE_COLUMN, WINDOW
 from power_meter.ui.theme import Palette
 from power_meter.ui.widgets import (
     CONTROL_H,
@@ -68,7 +69,7 @@ HARDWARE_LABELS: Final = {
 }
 TDP_FIELDS: Final[Mapping[Component, str]] = {"cpu": "cpu_tdp_w", "gpu": "gpu_tdp_w"}
 DROPDOWN_W: Final = 280
-CONTENT_W: Final = 460 - 2 * XL  # the window is 460 px wide
+CONTENT_W: Final = WINDOW[0] - SCENE_COLUMN - 2 * XL
 
 
 class SettingsView(ctk.CTkFrame):
@@ -97,7 +98,11 @@ class SettingsView(ctk.CTkFrame):
         self._font_body = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY)
         self._font_strong = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_BODY, "bold")
         self._font_caption = ctk.CTkFont(theme.FONT_FAMILY, theme.SIZE_CAPTION)
-        fonts = {"font": self._font_body, "caption_font": self._font_caption}
+        field_options = {
+            "font": self._font_body,
+            "caption_font": self._font_caption,
+            "width": CONTENT_W,
+        }
 
         form = form_from_settings(settings)
         self._vars = {
@@ -146,7 +151,9 @@ class SettingsView(ctk.CTkFrame):
         self._hint.grid(row=1, column=0, sticky="w", pady=(XS, 0))
 
         self._fields = {
-            name: Field(price, self._painter, title, caption, unit, self._vars[name], **fonts)
+            name: Field(
+                price, self._painter, title, caption, unit, self._vars[name], **field_options
+            )
             for name, (title, caption, unit) in RATE_LABELS.items()
         }
         self._fields["custom_rate"].grid(row=2, column=0, sticky="ew", pady=(M, 0))
@@ -178,7 +185,13 @@ class SettingsView(ctk.CTkFrame):
         self._advanced.grid(row=8, column=0, sticky="ew", padx=XL, pady=(XS, 0))
         for i, (name, (title, caption, unit)) in enumerate(HARDWARE_LABELS.items()):
             field = Field(
-                self._advanced, self._painter, title, caption, unit, self._vars[name], **fonts
+                self._advanced,
+                self._painter,
+                title,
+                caption,
+                unit,
+                self._vars[name],
+                **field_options,
             )
             field.grid(row=i, column=0, sticky="ew", pady=(0 if i == 0 else M, 0))
             self._fields[name] = field

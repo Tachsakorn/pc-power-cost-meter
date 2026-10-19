@@ -13,10 +13,9 @@ from power_meter.ui.scene.art import NATIVE, SceneArt
 from power_meter.ui.scene.backdrop import Backdrop
 from power_meter.ui.scene.motion import windows_animations_enabled
 from power_meter.ui.scene.state import SceneState
-from power_meter.ui.stage import Stage, pixel_scale
+from power_meter.ui.stage import RING_CENTRE_NATIVE, RING_RADIUS_NATIVE, Stage
 from power_meter.ui.theme import DARK, LIGHT
 
-CAPTION = "Active · following live data"
 TOOLTIP = "Working — 120 W, 40% of this PC's maximum"
 
 
@@ -75,7 +74,7 @@ def make_stage(window: ctk.CTk, art: SceneArt, animate: bool = True) -> Stage:
     stage = Stage(window, DARK, False, art)
     stage.pack(fill="both", expand=True)
     stage.set_animate(animate)
-    stage.show_scene(SceneState.ACTIVE, CAPTION, TOOLTIP)
+    stage.show_scene(SceneState.ACTIVE, TOOLTIP)
     stage.start()
     pump(window)
     return stage
@@ -101,11 +100,27 @@ def tooltip_texts(stage: Stage) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    ("available", "scale"),
-    [((300, 320), 2), ((450, 480), 3), ((255, 600), 1), ((100, 100), 1)],
+    ("factor", "column", "scale"),
+    [(1.0, 360, 2), (1.25, 450, 2), (1.5, 540, 3), (1.75, 630, 3), (2.0, 720, 4)],
 )
-def test_pixel_scale_uses_whole_factors(available: tuple[int, int], scale: int) -> None:
-    assert pixel_scale(available, NATIVE) == scale
+def test_scene_takes_the_largest_whole_scale_its_ring_fits(
+    window: ctk.CTk,
+    art: SceneArt,
+    set_scaling: Callable[[float], None],
+    factor: float,
+    column: int,
+    scale: int,
+) -> None:
+    set_scaling(factor)
+    stage = make_stage(window, art)
+
+    ring = stage.ring
+    assert (stage.scene_column_px, stage.pixel_size) == (column, scale)
+    assert ring.x == column // 2
+    assert ring.radius == RING_RADIUS_NATIVE * scale
+    left, top, _, _ = stage.bbox("scene")
+    assert (ring.x - left, ring.y - top) == tuple(n * scale for n in RING_CENTRE_NATIVE)
+    assert stage.scene_bottom == top + art.bottom * scale
 
 
 def test_scene_redraws_on_each_tick_when_animated(
@@ -126,12 +141,12 @@ def test_static_scene_draws_once_per_state(
     before = scene_draws(stage, scene_pastes)
 
     pump(window, 0.5)
-    stage.show_scene(SceneState.ACTIVE, CAPTION, TOOLTIP)
+    stage.show_scene(SceneState.ACTIVE, TOOLTIP)
     pump(window, 0.2)
     assert scene_draws(stage, scene_pastes) == before
     assert pending_ticks(window) == 0
 
-    stage.show_scene(SceneState.HIGH, "High load · following live data", TOOLTIP)
+    stage.show_scene(SceneState.HIGH, TOOLTIP)
     pump(window, 0.2)
     assert scene_draws(stage, scene_pastes) == before + 1
 
@@ -268,25 +283,15 @@ def test_requests_in_one_event_draw_one_backdrop(
     assert len(backdrops) == before + 1
 
 
-def plain_rows(backdrop: Backdrop, box: tuple[int, int, int, int], background: str) -> bool:
-    plain = Image.new("RGB", (1, 1), background).getpixel((0, 0))
-    colours = backdrop.image.crop(box).getcolors()
-    return colours is not None and {colour for _, colour in colours} == {plain}
-
-
-@pytest.mark.parametrize(("palette", "daylight"), [(DARK, False), (LIGHT, True)])
-def test_caption_row_is_kept_clear_before_the_caption_is_drawn(
-    window: ctk.CTk, art: SceneArt, backdrops: list[Backdrop], palette: Any, daylight: bool
-) -> None:
-    stage = Stage(window, palette, daylight, art)
+def test_placed_images_stay_above_the_scene(window: ctk.CTk, art: SceneArt) -> None:
+    stage = Stage(window, DARK, False, art)
     stage.pack(fill="both", expand=True)
+    stage.place_image("ring", Image.new("RGBA", (40, 40)), 0, 0)
     stage.start()
     pump(window, 0.2)
 
-    stage.show_scene(SceneState.ACTIVE, CAPTION, TOOLTIP)
-
-    _, top, _, bottom = stage.bbox("caption")
-    assert plain_rows(backdrops[-1], (0, top, stage.scene_column_px, bottom), palette.background)
+    order = stage.find_all()
+    assert order.index(stage.find_withtag("ring")[0]) > order.index(stage.find_withtag("scene")[0])
 
 
 def test_hover_labels_are_not_kept_clear(
@@ -337,15 +342,14 @@ def test_scene_follows_a_scaling_change(
     set_scaling: Callable[[float], None],
 ) -> None:
     stage = make_stage(window, art)
-    assert (stage.scene_column_px, stage.pixel_size) == (300, 2)
+    assert (stage.scene_column_px, stage.pixel_size) == (360, 2)
 
     set_scaling(1.5)
     pump(window, 0.3)
 
-    assert (stage.scene_column_px, stage.pixel_size) == (450, 3)
-    assert stage.grid_columnconfigure(0)["minsize"] == 450
+    assert (stage.scene_column_px, stage.pixel_size) == (540, 3)
+    assert stage.grid_columnconfigure(0)["minsize"] == 540
     left, top, right, bottom = stage.bbox("scene")
     assert (right - left, bottom - top) == (NATIVE[0] * 3, NATIVE[1] * 3)
+    assert stage.ring.radius == RING_RADIUS_NATIVE * 3
     assert backdrops[-1].image.size == (stage.winfo_width(), stage.winfo_height())
-    caption_top = stage.bbox("caption")[1]
-    assert caption_top > bottom

@@ -49,13 +49,15 @@ def test_warming_up_shows_dash() -> None:
 
     vm = build_view_model(state, SETTINGS, FLAT)
 
+    assert vm.status == "Starting up"
     assert vm.spent == "12.5000"
-    assert vm.spent_caption == "in 10 h 0 min"
+    assert vm.spent_caption == "10 h 0 min measured"
     assert vm.watts == "—"
     assert vm.load == ""
     assert vm.peak == ""
     assert vm.details == ()
-    assert vm.monthly == "Measuring…"
+    assert vm.monthly == "ready in 60 s"
+    assert vm.monthly_ready is False
 
 
 def test_no_reading_shows_dashes() -> None:
@@ -71,14 +73,15 @@ def test_no_reading_shows_dashes() -> None:
 def test_running_values() -> None:
     vm = build_view_model(RUNNING, SETTINGS, FLAT)
 
-    assert vm.status == "Measuring"
+    assert vm.status == "Live"
     assert vm.watts == "247"
     assert vm.load == "Gaming-level use"
     assert vm.peak == "300 W"
     assert vm.spent == "1.2847"
-    assert vm.spent_caption == "in 2 h 15 min"
+    assert vm.spent_caption == "2 h 15 min measured"
     assert vm.per_hour == "฿1.11"
     assert vm.monthly == "≈ ฿85.65"
+    assert vm.monthly_ready is True
     assert vm.hours_per_day == 5
     assert [(row.label, row.watts, row.detail, row.measured) for row in vm.details] == [
         ("CPU", "50 W", "measured", True),
@@ -120,11 +123,15 @@ def test_monthly_follows_hours_per_day() -> None:
     assert vm.hours_per_day == 24
 
 
-def test_monthly_measuring() -> None:
-    short_session = Totals(cost_thb=0.002, energy_kwh=0.0004, elapsed_s=30.0)
+@pytest.mark.parametrize(("elapsed_s", "text"), [(30.0, "ready in 30 s"), (59.2, "ready in 1 s")])
+def test_monthly_counts_down_until_there_is_enough_data(elapsed_s: float, text: str) -> None:
+    short_session = Totals(cost_thb=0.002, energy_kwh=0.0004, elapsed_s=elapsed_s)
     state = replace(RUNNING, session=short_session)
 
-    assert build_view_model(state, SETTINGS, FLAT).monthly == "Measuring…"
+    vm = build_view_model(state, SETTINGS, FLAT)
+
+    assert vm.monthly == text
+    assert vm.monthly_ready is False
 
 
 def test_detail_share_is_relative_to_the_largest_part() -> None:
