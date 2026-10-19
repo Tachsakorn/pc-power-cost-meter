@@ -14,6 +14,11 @@ class Palette:
     track: str
     error: str
     focus: str
+    # Breakdown parts, each with its own hue: the main draw (CPU, or the battery), the GPU and
+    # the other components. Losses and extras use text_muted.
+    part_main: str
+    part_gpu: str
+    part_other: str
 
 
 DARK: Final = Palette(
@@ -21,12 +26,15 @@ DARK: Final = Palette(
     surface="#231E1A",
     line="#332B25",
     text="#F0E8DC",
-    text_muted="#A3968A",
+    text_muted="#B5A89A",
     text_faint="#6E635A",
     accent="#E8B866",
     track="#3A312A",
     error="#FF8A70",
     focus="#E8B866",
+    part_main="#1F9E8F",
+    part_gpu="#D46A45",
+    part_other="#8E7BE0",
 )
 
 LIGHT: Final = Palette(
@@ -34,19 +42,22 @@ LIGHT: Final = Palette(
     surface="#FBF7F0",
     line="#E2D8C8",
     text="#2A2119",
-    text_muted="#74675A",
+    text_muted="#6B5E51",
     text_faint="#A99C8E",
     accent="#9A5F0E",
     track="#E6DDCF",
     error="#B3261E",
     focus="#9A5F0E",
+    part_main="#008C7E",
+    part_gpu="#C2552E",
+    part_other="#6E5BC9",
 )
 
 FONT_FAMILY: Final = "Segoe UI"
 FONT_LIGHT: Final = "Segoe UI Light"
 ICON_FONTS: Final = ("Segoe Fluent Icons", "Segoe MDL2 Assets")
 SIZE_COST: Final = 44
-SIZE_POWER: Final = 46
+SIZE_POWER: Final = 68
 SIZE_BODY: Final = 13
 SIZE_CAPTION: Final = 11
 SIZE_VALUE: Final = 17

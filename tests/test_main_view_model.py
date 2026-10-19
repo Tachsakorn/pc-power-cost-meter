@@ -134,15 +134,15 @@ def test_monthly_counts_down_until_there_is_enough_data(elapsed_s: float, text: 
     assert vm.monthly_ready is False
 
 
-def test_detail_share_is_relative_to_the_largest_part() -> None:
+def test_detail_shares_are_parts_of_the_whole_draw() -> None:
     snapshot = replace(
         SNAPSHOT,
-        parts=(Part("CPU", 54.0, True, "measured"), Part("GPU", 107.0, True, "measured")),
+        parts=(Part("CPU", 54.0, True, "measured"), Part("GPU", 106.0, True, "measured")),
     )
 
     vm = build_view_model(replace(RUNNING, snapshot=snapshot), SETTINGS, FLAT)
 
-    assert [row.share for row in vm.details] == [pytest.approx(0.505, abs=1e-3), 1.0]
+    assert [row.share for row in vm.details] == [pytest.approx(0.3375), pytest.approx(0.6625)]
 
 
 def test_detail_share_is_zero_when_every_part_is_zero() -> None:

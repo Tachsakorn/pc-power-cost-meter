@@ -54,6 +54,7 @@ class DetailRow:
     detail: str
     measured: bool
     share: float
+    """Of the whole draw, so the bars add up to the reading."""
 
 
 @dataclass(frozen=True)
@@ -88,14 +89,14 @@ def build_view_model(
         load = snap.usage_label
         fraction = min(max(display_w / snap.peak_w, 0.0), 1.0) if snap.peak_w > 0 else 0.0
         peak = watts(snap.peak_w) if snap.peak_w > 0 else ""
-        largest = max((part.watts for part in snap.parts), default=0.0)
+        total = sum(part.watts for part in snap.parts)
         details = tuple(
             DetailRow(
                 part.label,
                 watts(part.watts),
                 part.detail,
                 part.measured,
-                part.watts / largest if largest > 0 else 0.0,
+                part.watts / total if total > 0 else 0.0,
             )
             for part in snap.parts
         )
@@ -142,10 +143,11 @@ XS, S, M, L, XL = theme.SPACE
 EDGE: Final = 24
 PAD: Final = (20, EDGE)
 SIZE_CURRENCY: Final = 22
-SIZE_UNIT: Final = 18
+SIZE_UNIT: Final = 20
 STEPPER_BUTTON: Final = 24
-BAR_H: Final = 2
-READOUT_GAP: Final = 16
+BAR_H: Final = 3
+DASH: Final = (4, 3)
+READOUT_GAP: Final = 6
 SPENT_TOP: Final = 36
 END_LABEL_GAP: Final = 2
 
@@ -162,13 +164,61 @@ HEADER_ROW, SPENT_ROW, DETAILS_ROW, FOOTER_ROW = 0, 1, 8, 10
 ROW_COUNT: Final = 11
 
 
+# Each part keeps its hue wherever it appears; losses and extras stay neutral.
+PART_ROLES: Final = {
+    "CPU": "part_main",
+    "Battery": "part_main",
+    "GPU": "part_gpu",
+    "Other": "part_other",
+}
+
+
+class PartBar(tkinter.Canvas):
+    """A part's share of the whole draw: solid when measured, dashed when estimated."""
+
+    def __init__(self, master: Any, painter: Painter, role: str, k: float) -> None:
+        super().__init__(master, height=round(BAR_H * k), bd=0, highlightthickness=0)
+        painter.paint(self, bg="background")
+        self._painter = painter
+        self._role = role
+        self._k = k
+        self._share = 0.0
+        self._measured = True
+        self.bind("<Configure>", lambda _e: self.redraw())
+
+    def show(self, share: float, measured: bool) -> None:
+        if (share, measured) != (self._share, self._measured):
+            self._share, self._measured = share, measured
+            self.redraw()
+
+    def rescale(self, k: float) -> None:
+        self._k = k
+        self.configure(height=round(BAR_H * k))
+        self.redraw()
+
+    def redraw(self) -> None:
+        self.delete("all")
+        width, height = self.winfo_width(), round(BAR_H * self._k)
+        palette = self._painter.palette
+        self.create_rectangle(0, 0, width, height, fill=palette.track, width=0)
+        end = round(width * self._share)
+        if end <= 0:
+            return
+        colour = getattr(palette, self._role)
+        if self._measured:
+            self.create_rectangle(0, 0, end, height, fill=colour, width=0)
+            return
+        dash, gap = (max(1, round(n * self._k)) for n in DASH)
+        for x in range(0, end, dash + gap):
+            self.create_rectangle(x, 0, min(x + dash, end), height, fill=colour, width=0)
+
+
 class DetailCells(NamedTuple):
     name: Any
     watts: Any
     dot: Any
     detail: Any
-    track: tkinter.Frame
-    fill: tkinter.Frame
+    bar: PartBar
 
 
 class MainView:
@@ -353,6 +403,8 @@ class MainView:
         dark = palette == theme.DARK
         set_text(self._theme_button, self._icons.sun if dark else self._icons.moon)
         self._theme_button.hint = "Light mode" if dark else "Dark mode"
+        for cells in self._detail_cells:
+            cells.bar.redraw()
         self._draw_ring()
 
     def set_animate(self, on: bool) -> None:
@@ -567,8 +619,8 @@ class MainView:
         for line, space_above, wide in self._rules:
             line.grid_configure(**self._rule_padding(space_above, wide))
         for cells in self._detail_cells:
-            cells.track.configure(height=self._px(BAR_H))
-            cells.track.grid_configure(pady=(self._px(XS), 0))
+            cells.bar.rescale(widget_scaling)
+            cells.bar.grid_configure(pady=(self._px(XS), 0))
         # Once every scaling callback has run, so the stage has refitted its scene by then.
         if self._refit_job is None:
             self._refit_job = self._stage.after_idle(self._refit)
@@ -591,21 +643,14 @@ class MainView:
         for cells, detail in zip(self._detail_cells, rows, strict=True):
             set_text(cells.watts, detail.watts)
             set_text(cells.detail, detail.detail)
-            dot = "●" if detail.measured else "○"
-            if cells.dot.cget("text") != dot:
-                cells.dot.configure(text=dot)
-                self._painter.paint(
-                    cells.dot, text_color="accent" if detail.measured else "text_muted"
-                )
-            if float(cells.fill.place_info().get("relwidth", -1)) != detail.share:
-                cells.fill.place(relx=0, rely=0, relheight=1, relwidth=detail.share)
+            set_text(cells.dot, "●" if detail.measured else "○")
+            cells.bar.show(detail.share, detail.measured)
 
     def _rebuild_detail_rows(self, names: list[str]) -> None:
         for cells in self._detail_cells:
             for widget in cells:
                 self._painter.forget(widget)
-            # The fill goes with its track.
-            for widget in (cells.name, cells.watts, cells.dot, cells.detail, cells.track):
+            for widget in cells:
                 widget.destroy()
         self._detail_cells = []
         # Each part takes two grid rows: its figures, then a bar under its name and watts.
@@ -615,18 +660,14 @@ class MainView:
             name_label.grid(row=text_row, column=0, sticky="w", pady=pady)
             power = label(self._painter, self._details, "", self._font_body, "text")
             power.grid(row=text_row, column=1, sticky="e", pady=pady)
-            dot = label(self._painter, self._details, "", self._font_caption, "text_muted")
+            role = PART_ROLES.get(name, "text_muted")
+            dot = label(self._painter, self._details, "", self._font_caption, role)
             dot.grid(row=text_row, column=2, padx=(M, XS), pady=pady)
             detail = label(self._painter, self._details, "", self._font_caption, "text_muted")
             detail.grid(row=text_row, column=3, sticky="w", pady=pady)
-            track = tkinter.Frame(self._details, height=self._px(BAR_H), bd=0, highlightthickness=0)
-            self._painter.paint(track, bg="track")
-            track.grid(
-                row=text_row + 1, column=0, columnspan=2, sticky="ew", pady=(self._px(XS), 0)
-            )
-            fill = tkinter.Frame(track, bd=0, highlightthickness=0)
-            self._painter.paint(fill, bg="text_muted")
-            self._detail_cells.append(DetailCells(name_label, power, dot, detail, track, fill))
+            bar = PartBar(self._details, self._painter, role, self._k)
+            bar.grid(row=text_row + 1, column=0, columnspan=2, sticky="ew", pady=(self._px(XS), 0))
+            self._detail_cells.append(DetailCells(name_label, power, dot, detail, bar))
 
     def _reset_clicked(self) -> None:
         if self._reset_job is None:

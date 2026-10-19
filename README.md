@@ -96,8 +96,8 @@ the right. Settings replaces the dashboard and leaves the scene in view.
 - **Per hour, right now**, **per month** and **hours used a day** give the cost at the current
   price and the monthly estimate; the stepper sets how many hours a day you use the PC. Per month
   shows "ready in … s" until the app has a minute of readings.
-- **Breakdown** lists CPU, GPU, other components and power-supply loss, each marked *measured*
-  (filled dot) or *estimated* (hollow dot).
+- **Breakdown** lists CPU, GPU, other components and power-supply loss, each with its share of the
+  total and marked *measured* (filled dot, solid bar) or *estimated* (hollow dot, dashed bar).
 - **Settings** sets your meter type and price, the theme, whether the scene animates, and under
   **Advanced settings** the hardware values used in the formulas below. Advanced settings also shows
   the folder the app saves to. The sun or moon button next to Settings switches between light and

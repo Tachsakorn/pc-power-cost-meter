@@ -11,6 +11,7 @@ from PIL import Image
 from power_meter.ui import main_view
 from power_meter.ui.gauge import RingArt, margin
 from power_meter.ui.main_view import (
+    DASH,
     ESTIMATES_ONLY,
     RESTARTING,
     WAITING,
@@ -314,7 +315,7 @@ def test_dashboard_follows_a_scaling_change(
     assert right - left == 2 * (ring.radius + margin(1.5))
     assert ((left + right) // 2, (top + bottom) // 2) == (ring.x, ring.y)
     assert view._readout.winfo_y() > stage.scene_bottom
-    assert {int(cells.track.cget("height")) for cells in view._detail_cells} == {
+    assert {int(cells.bar.cget("height")) for cells in view._detail_cells} == {
         round(main_view.BAR_H * 1.5)
     }
 
@@ -331,12 +332,43 @@ def test_hours_stepper_stops_at_its_limits(stage: Stage) -> None:
     assert hours == [main_view.HOURS_MAX - 1]
 
 
-def test_detail_bars_follow_each_share(stage: Stage) -> None:
+def bar_fills(bar: Any) -> list[tuple[float, float, str]]:
+    """(left, right, colour) of each mark drawn over the bar's track."""
+    track, *marks = bar.find_all()
+    return [
+        (bar.coords(mark)[0], bar.coords(mark)[2], bar.itemcget(mark, "fill")) for mark in marks
+    ]
+
+
+def test_measured_bars_are_solid_and_estimated_bars_dashed(stage: Stage) -> None:
+    view = make_view(stage)
+    cpu, other = (cells.bar for cells in view._detail_cells)
+    width = cpu.winfo_width()
+
+    [(left, right, colour)] = bar_fills(cpu)
+    assert (left, colour) == (0, DARK.part_main)
+    assert right == round(width * 0.72)
+
+    dashes = bar_fills(other)
+    assert len(dashes) > 10
+    assert {colour for _, _, colour in dashes} == {DARK.part_other}
+    assert width - sum(DASH) < dashes[-1][1] <= width
+
+
+def test_parts_keep_their_colour_and_losses_stay_neutral(stage: Stage) -> None:
+    rows = (
+        DetailRow("GPU", "12 W", "measured", True, 0.3),
+        DetailRow("PSU loss", "8 W", "87% efficiency", False, 0.1),
+    )
     view = make_view(stage)
 
-    widths = [float(cells.fill.place_info()["relwidth"]) for cells in view._detail_cells]
+    view.render(replace(BASE, details=rows))
+    stage.update()
 
-    assert widths == [0.72, 1.0]
+    gpu, loss = view._detail_cells
+    assert gpu.dot.cget("text_color") == DARK.part_gpu
+    assert loss.dot.cget("text_color") == DARK.text_muted
+    assert (gpu.dot.cget("text"), loss.dot.cget("text")) == ("●", "○")
 
 
 def test_breakdown_says_when_there_is_no_reading_yet(stage: Stage) -> None:

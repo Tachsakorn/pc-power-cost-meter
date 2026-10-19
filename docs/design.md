@@ -298,7 +298,7 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
 - **Power ring and readout.** The ring wraps the dome, so the scene and the gauge read as one instrument. Under the dome: watts in a large light weight with a small "W" and the usage label. "0" and the PC's peak watts (`P_peak`) sit just past the ticks at the ring's two ends.
 - **Spent since last reset.** The total that persists across restarts until Reset, in the accent colour with four decimals and a small "฿", then how long the meter has run in that time ("2 h 15 min measured"; time with the app closed or the PC asleep is not counted). Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
 - **Figures.** Label-and-value rows: the cost per hour at the current draw and price, the monthly estimate, and hours used a day (a 1–24 stepper that saves on every change). Until there is a minute of session data the monthly row reads "ready in N s" in the muted colour (§5).
-- **Breakdown.** Two lines per part: name, watts, and a dot with the detail text; then a thin bar under the name and watts showing its share of the largest part. A filled dot marks a measured part and a hollow one an estimate. Before the first reading it reads "Waiting for the first reading".
+- **Breakdown.** Two lines per part: name, watts, and a dot with the detail text; then a thin bar under the name and watts showing its share of the whole draw, so the bars add up to the reading. CPU (or the battery), GPU and other components each have their own colour for the dot and the bar; losses and extras are neutral. A measured part has a filled dot and a solid bar, an estimate a hollow dot and a dashed bar. Before the first reading it reads "Waiting for the first reading".
 - **Footer.** Across the window: the price line and **Change** on the left, **Reset** on the right. With TOU selected the price line reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`. Reset asks for confirmation by changing to "Click again to reset" for 3 s, and ignores a second click within 0.4 s of the first. No modal dialog.
 - Copy is short and label-style. Pixel art is never used for text or values.
 - The theme button switches between dark and light at once and saves the choice.
@@ -411,18 +411,21 @@ The palette is Earth & amber. Every interface colour comes from `ui/theme.py`. T
 | surface | `#231E1A` | `#FBF7F0` | Raised controls, hover text and hint boxes |
 | line | `#332B25` | `#E2D8C8` | Rules, outlines |
 | text | `#F0E8DC` | `#2A2119` | Values, primary text |
-| text_muted | `#A3968A` | `#74675A` | Captions, labels, units, the ring's major ticks |
+| text_muted | `#B5A89A` | `#6B5E51` | Captions, labels, units, the ring's major ticks |
 | text_faint | `#6E635A` | `#A99C8E` | Disabled text only |
-| accent | `#E8B866` | `#9A5F0E` | The ring's value, the amount spent, measured dots, links |
+| accent | `#E8B866` | `#9A5F0E` | The ring's value, the amount spent, the live status dot, links |
+| part_main | `#1F9E8F` | `#008C7E` | CPU or battery in the breakdown |
+| part_gpu | `#D46A45` | `#C2552E` | GPU in the breakdown |
+| part_other | `#8E7BE0` | `#6E5BC9` | Other components in the breakdown |
 | track | `#3A312A` | `#E6DDCF` | The ring's track and minor ticks, bar tracks |
 | error | `#FF8A70` | `#B3261E` | Invalid fields, Reset confirmation |
 | focus | `#E8B866` | `#9A5F0E` | Focus ring |
 
-Contrast against the background and the surface: text, muted text and error are at least 4.5:1 in both themes, and the accent is at least 4.5:1 on the background (9.8:1 dark, 4.5:1 light). The focus ring is at least 3:1 on the background. `text_faint` is below 4.5:1 and is used only for disabled controls. `tests/test_theme.py` checks these ratios.
+Contrast against the background and the surface: text, muted text and error are at least 4.5:1 in both themes, and the accent is at least 4.5:1 on the background (9.8:1 dark, 4.5:1 light). The focus ring is at least 3:1 on the background. `text_faint` is below 4.5:1 and is used only for disabled controls. `tests/test_theme.py` checks these ratios. The three part colours are a categorical set checked for colour-blind separation on each theme's background (every pair at least 9 ΔE apart in OKLab ×100 under simulated deuteranopia, protanopia and tritanopia, and each at least 3:1 against the background); since every part is also named, colour is never the only label.
 
-- **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 46 (watts), 44 (cost), 22 (baht sign), 18 (watt unit), 17 (stat values), 13 (body), 11 (captions).
+- **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 68 (watts), 44 (cost), 22 (baht sign), 20 (watt unit), 17 (stat values), 13 (body), 11 (captions).
 - **Spacing:** 4-px grid (4 / 8 / 12 / 16 / 24), with 20 px left and 24 px right margins on the dashboard. Controls share one 8 px corner radius. No gradients, glow or emoji; the only imagery is the pixel scene.
-- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, the status dot changes shape when there is no live reading, and the load is also written under the dome as a usage label, with the scene state named in the dome's hover text. The theme and Settings buttons show only a glyph, so they name their action in a hint on hover and on keyboard focus.
+- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape, bar style and the word beside them, the status dot changes shape when there is no live reading, and the load is also written under the dome as a usage label, with the scene state named in the dome's hover text. The theme and Settings buttons show only a glyph, so they name their action in a hint on hover and on keyboard focus.
 
 ## 7. Persistence
 
