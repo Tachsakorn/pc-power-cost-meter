@@ -19,8 +19,8 @@ numbers come from real sensors and which are estimates.
 
 ## Features
 
-- **Live cost meter.** Total spent to four decimal places (฿ 1.2847), current wall power in watts,
-  and the cost per hour at the current price.
+- **Live cost meter.** Total spent since the last reset to four decimal places (฿ 1.2847), current
+  wall power in watts, and the cost per hour at the current price.
 - **Measured where possible, estimated where not.** CPU power comes from the processor's own power
   counters, GPU power from the AMD or NVIDIA driver, and a laptop on battery uses the battery's
   discharge rate. Anything that cannot be measured is estimated, and the breakdown labels every
@@ -28,15 +28,15 @@ numbers come from real sensors and which are estimates.
 - **Normal and TOU meters.** Prices for the standard progressive tariff and the Time-of-Use tariff,
   including Thai public holidays that are billed at the off-peak rate.
 - **Monthly estimate.** "If you use your PC like this 5 hours a day: ≈ ฿167 per month", based on
-  the current session.
+  the current session. It counts down for the first minute while it gathers enough data.
 - **A scene that follows the load.** A pixel-art glass dome, seen from above, with a pond, a fallen
-  log, mushrooms and flowers under a big tree, sits next to the numbers. It has four states: idle,
+  log, mushrooms and flowers under a big tree, sits inside the power ring. It has four states: idle,
   active, high load and "waiting for live data". As the load rises the floor brightens and takes on
   the crystal's glow, sparks and particles flow, and the rabbit wakes up and hops round the tree;
   when the PC is quiet it sleeps while fireflies drift about. The scene goes grey when there are no
   readings, so it never shows a state the app has not measured.
 - **Earth and amber themes, dark and light.** Dark has a starry backdrop and light a daytime one;
-  switch at any time. The tick gauge shows the current load against this PC's maximum.
+  switch at any time. The ring around the dome shows the current load against this PC's maximum.
 - **Calm by choice.** The scene animates at 8 frames per second and stops while the window is
   minimised. Turn it off under **Settings → Animate the scene**; it also stays still when Windows'
   *Animation effects* setting is off.
@@ -82,19 +82,20 @@ delete the file and download it again from the Releases page.
 
 ## Using it
 
-The window is a fixed 760 × 600: the scene on the left, the dashboard on the right. Settings
-replaces the dashboard and leaves the scene in view.
+The window is a fixed 760 × 600: the scene inside its power ring on the left, the dashboard on
+the right. Settings replaces the dashboard and leaves the scene in view.
 
-- **The gauge** shows wall power (averaged over the last three seconds so the number is readable)
-  with a usage level from *Idle* to *Gaming-level use*. Its ticks fill from 0 W to the most this PC
-  is expected to draw, which is printed at the right end of the scale.
-- **The scene** switches between *Idle*, *Active* and *High load* by how much of that maximum the PC
-  is drawing, and shows *Waiting for live data* while there are no readings. The caption under the
-  dome names the state; hover over the dome for the exact reading.
-- **Spent** is the running total, kept across restarts, with the time it covers. **Reset** sets it
-  back to zero; click it a second time within 3 seconds to confirm.
-- **Per hour**, **per month** and **hours a day** give the cost at the current price and the
-  monthly estimate; the stepper sets how many hours a day you use the PC.
+- **The ring** around the dome fills from 0 W to the most this PC is expected to draw, which is
+  printed at its right end. Under the dome is the wall power (averaged over the last three seconds
+  so the number is readable) with a usage level from *Idle* to *Gaming-level use*.
+- **The scene** switches between idle, active and high load by how much of that maximum the PC is
+  drawing, and goes grey while there are no readings. Hover over the dome for the exact reading.
+- **Spent since last reset** is the running total, kept across restarts, with how long the app has
+  measured in that time. **Reset** sets it back to zero; click it a second time within 3 seconds to
+  confirm.
+- **Per hour, right now**, **per month** and **hours used a day** give the cost at the current
+  price and the monthly estimate; the stepper sets how many hours a day you use the PC. Per month
+  shows "ready in … s" until the app has a minute of readings.
 - **Breakdown** lists CPU, GPU, other components and power-supply loss, each marked *measured*
   (filled dot) or *estimated* (hollow dot).
 - **Settings** sets your meter type and price, the theme, whether the scene animates, and under
@@ -417,8 +418,8 @@ affiliated with MEA, PEA, AMD, NVIDIA or Microsoft.
 
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) by Tom Schimansky (MIT), for the
   user interface.
-- [Pillow](https://python-pillow.github.io/) (MIT-CMU), which scales the scene and draws the gauge
-  and backdrop.
+- [Pillow](https://python-pillow.github.io/) (MIT-CMU), which scales the scene and draws the power
+  ring and backdrop.
 - [nvidia-ml-py](https://pypi.org/project/nvidia-ml-py/), NVIDIA's Python bindings for NVML (BSD).
 - The AMD Display Library (ADL), used through the AMD graphics driver.
 - Microsoft's Performance Data Helper (PDH) and DXCore APIs.

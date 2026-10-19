@@ -80,9 +80,9 @@ src/power_meter/
     scene/             dome scene layers (back, canopy, glass PNGs), depth map and scene.json
   ui/
     app.py             main window: polling, view switching, theme, saving settings
-    stage.py           window-filling canvas: backdrop, animated scene, caption, hover text, hints
+    stage.py           window-filling canvas: backdrop, animated scene, ring geometry, hover text, hints
     main_view.py       dashboard and its view-model
-    gauge.py           tick gauge image
+    gauge.py           power ring image
     settings_view.py   settings view
     form.py            settings form parsing and validation (no Tk)
     format.py          money, duration, watt and price-line text
@@ -116,7 +116,7 @@ sampler thread (every 1.0 s, monotonic clock)
 Tk main loop (after() every 250 ms)
   tariff.rate_at(now) for the window's current settings ──► RateInfo
   sampler.latest() + settings + RateInfo ──► build_view_model() ──► MainView.render(view_model)
-  sampler.latest() ──► StateTracker.update() ──► Stage.show_scene(state, caption, hover text)
+  sampler.latest() ──► StateTracker.update() ──► Stage.show_scene(state, hover text)
 
 Stage (after() every 125 ms, while the window is visible and animation is on)
   draws the next scene frame
@@ -124,7 +124,7 @@ Stage (after() every 125 ms, while the window is visible and animation is on)
 
 - Hardware calls never run on the Tk thread, so a slow or hung driver call cannot freeze the window.
 - Only the sampler thread touches the power model and the meter. The UI reads immutable `MeterState` objects through `latest()` and talks back through `apply_settings()`, `request_reset()` and `save_now()`, which queue commands for the sampler's next tick. Commands still queued when the sampler stops run before the final save.
-- `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text. The scene's state logic (`StateTracker`, `describe`, `caption`) is likewise free of Tk and takes an injectable clock.
+- `build_view_model` is a pure function that formats everything the main view shows, including the monthly projection, so the view itself only sets text. The scene's state logic (`StateTracker`, `describe`) is likewise free of Tk and takes an injectable clock.
 - The window prices the display from its own copy of the settings rather than the sampler's, so right after a settings change the price line and cost per hour never mix the new meter type with the old rate. Billing switches on the sampler's next tick.
 
 ## 4. Power model
@@ -261,7 +261,7 @@ avg_cost_per_hour = session_cost / session_hours
 monthly           ≈ avg_cost_per_hour × hours_per_day × 30
 ```
 
-- Shown only after 60 s of session data. Before that it reads "Measuring…".
+- Shown only after 60 s of session data. Before that it counts down: "ready in 45 s".
 - `hours_per_day` defaults to 5, range 1–24, and is persisted.
 - "Session" means since the app started, so the projection follows current behaviour rather than the all-time total.
 
@@ -271,41 +271,45 @@ Goals: understandable by non-technical users, with the technical detail always o
 
 ### Window and layout
 
-The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). A single `Stage` canvas fills it. The left column, 300 px wide, holds the scene; the right column, 460 px wide, holds the dashboard or, when open, Settings, so the scene stays visible in both.
+The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). A single `Stage` canvas fills it. The left column, 360 px wide, holds the scene inside the power ring; the right column, 400 px wide, holds the dashboard or, when open, Settings, so the scene stays visible in both. The footer runs across both columns.
 
 ```
- [dome scene]       ● Measuring                      ☀  ⚙
-                           ╭ tick gauge ╮
-                              247 W
-                            Gaming-level use
-                     0                    420 W
- ● High load ·       SPENT
-   following         ฿ 1.2847              in 2 h 15 min
-   live data         ───────────────────────────────────
-                     PER HOUR   │ PER MONTH   │ HOURS A DAY
-                     ฿1.11      │ ≈ ฿166      │ [−] 5 [+]
-                     ───────────────────────────────────
-                     BREAKDOWN
-                     CPU       ▬▬▬▬▬▬     50 W  ● measured
-                     GPU       ▬▬▬▬▬▬▬▬  140 W  ● measured
-                     Other     ▬▬         25 W  ○ estimated
-                     PSU loss  ▬▬         32 W  87% efficiency
-                     ───────────────────────────────────
-                     Normal meter · ฿4.50 per unit   Change   Reset
+                         ● Live                               ☀  ⚙
+      ╭── power ring ──╮
+     ╱    ┌────────┐    ╲  SPENT SINCE LAST RESET
+    │     │  dome  │     │ ฿ 1.2847
+    │     │ scene  │     │ 2 h 15 min measured
+     ╲    └────────┘    ╱  ─────────────────────────────────
+   0  ╲              ╱ 420 W   Per hour, right now        ฿1.11
+                           Per month                 ≈ ฿166
+          247 W            Hours used a day        [−] 5 [+]
+     Gaming-level use      ─────────────────────────────────
+                           BREAKDOWN
+                           CPU                 50 W  ● measured
+                           ▬▬▬▬▬▬▬▬▬
+                           GPU                140 W  ● measured
+                           ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+                           …
+ ──────────────────────────────────────────────────────────────
+ Normal meter · ฿4.50 per unit   Change                    Reset
 ```
 
-- **Status line.** "● Measuring", or the active notice (see States). The dot is in the accent colour only while a live reading is shown with no notice; during a notice it is muted, and with no running reading (warming up or restarting) it becomes a hollow "○", like the scene caption. The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise. Hovering or focusing either one shows a small hint under it ("Light mode" or "Dark mode", "Settings"), drawn like the scene's hover text; it goes away on leave, loss of focus or a click.
-- **Gauge.** Watts in a large light weight with a small "W", the usage label below, and "0" and the PC's peak watts (`P_peak`) at the ends of the scale. With TOU selected, the price line in the footer reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`.
-- **Spent.** The "฿" sign small, the total large in the light weight with four decimals, and "in <duration>" right-aligned on the same baseline. Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
-- **Stats row.** Per hour, per month and hours a day (a 1–24 stepper that saves on every change), separated by 1 px rules. The month figure reads "Measuring…" for the first minute of session data (§5).
-- **Breakdown.** One row per part: name, a thin bar showing its share of the largest part, watts, and a dot with the detail text. A filled dot marks a measured part and a hollow one an estimate. Details are always shown; the taller window fits them, so there is no toggle.
-- **Footer.** The price line and **Change** on the left, **Reset** on the right. Reset asks for confirmation by changing to "Click again to reset" for 3 s, and ignores a second click within 0.4 s of the first. No modal dialog.
+- **Status line.** "● Live" while readings arrive, "○ Starting up" before the first one, or the active notice (see States). The dot is in the accent colour only while a live reading is shown with no notice; during a notice it is muted, and with no running reading (warming up or restarting) it becomes a hollow "○". The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise. Hovering or focusing either one shows a small hint under it ("Light mode" or "Dark mode", "Settings"), drawn like the scene's hover text; it goes away on leave, loss of focus or a click.
+- **Power ring and readout.** The ring wraps the dome, so the scene and the gauge read as one instrument. Under the dome: watts in a large light weight with a small "W" and the usage label. "0" and the PC's peak watts (`P_peak`) sit just past the ticks at the ring's two ends.
+- **Spent since last reset.** The total that persists across restarts until Reset, in the accent colour with four decimals and a small "฿", then how long the meter has run in that time ("2 h 15 min measured"; time with the app closed or the PC asleep is not counted). Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
+- **Figures.** Label-and-value rows: the cost per hour at the current draw and price, the monthly estimate, and hours used a day (a 1–24 stepper that saves on every change). Until there is a minute of session data the monthly row reads "ready in N s" in the muted colour (§5).
+- **Breakdown.** Two lines per part: name, watts, and a dot with the detail text; then a thin bar under the name and watts showing its share of the largest part. A filled dot marks a measured part and a hollow one an estimate. Before the first reading it reads "Waiting for the first reading".
+- **Footer.** Across the window: the price line and **Change** on the left, **Reset** on the right. With TOU selected the price line reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`. Reset asks for confirmation by changing to "Click again to reset" for 3 s, and ignores a second click within 0.4 s of the first. No modal dialog.
 - Copy is short and label-style. Pixel art is never used for text or values.
 - The theme button switches between dark and light at once and saves the choice.
 
-### Gauge
+### Power ring
 
-61 ticks on a 200° arc, from 190° to −10°. Every tenth tick is longer. Ticks up to the current one are drawn in the accent colour, the rest in the track colour, and the current tick is the longest and thickest. The lit fraction is the displayed watts (the 3-sample average shown above the arc) over `peak_w`, clamped to 0–1, so the ticks agree with the number and share the usage label's peak. The arc is rendered with Pillow at twice the size and scaled down, and redrawn only when the lit tick, the palette or the display scaling changes.
+A 260° ring that opens at the bottom, under the dome's base, from 140° clockwise to 40° (Pillow's angles, clockwise from three o'clock). A 6 px track is drawn in the track colour and the value in the accent colour from the start of the ring up to the lit fraction, both with round ends. Outside it, 41 ticks mark the scale; every tenth is longer and drawn in the faint text colour. The lit fraction is the displayed watts (the 3-sample average under the dome) over `peak_w`, clamped to 0–1, so the ring agrees with the number and shares the usage label's peak.
+
+The ring's centre and radius are set in the scene's native pixels (centre (64, 82), radius 72), so it clears the dome's knob and base at every scale. The scene is drawn at the largest whole scale at which the ring and its ticks (168 native px) fit the scene column: 2× at 100% and 125% display scaling, 3× at 150% and 175%, 4× at 200%. The ring's strokes follow the display scaling.
+
+A change of more than 1.5% of the scale eases towards the new reading, covering 35% of the remaining distance every 40 ms; smaller changes are drawn at once. Easing never delays or alters a reading: it only interpolates what is drawn between two readings, and it is off whenever the scene's animation is off. The ring is rendered with Pillow at twice the size, box-filtered down, and redrawn only when its sweep (to 1/1560 of the scale), the palette or the display scaling changes.
 
 ### Scene
 
@@ -320,12 +324,12 @@ Index 0 is transparent and the PNG layers share one 35-colour palette, so a stat
 
 **States.** The state comes from `ratio = wall_w / peak_w` of the latest snapshot (`peak_w` is the `P_peak` from §4). It uses its own thresholds, not the usage-label ones.
 
-| State | Shown when | Caption under the dome | Hover text |
-|---|---|---|---|
-| Waiting | No live data: warming up, restarting, or no snapshot | ○ Waiting for live data | Waiting for live readings |
-| Idle | `ratio` below 0.20 | ● Idle · following live data | Resting — 62 W, 15% of this PC's maximum |
-| Active | 0.20 ≤ `ratio` < 0.55 | ● Active · following live data | Working — … |
-| High load | `ratio` ≥ 0.55 | ● High load · following live data | High load — 214 W, 78% of this PC's maximum |
+| State | Shown when | Hover text |
+|---|---|---|
+| Waiting | No live data: warming up, restarting, or no snapshot | Waiting for live readings |
+| Idle | `ratio` below 0.20 | Resting — 62 W, 15% of this PC's maximum |
+| Active | 0.20 ≤ `ratio` < 0.55 | Working — … |
+| High load | `ratio` ≥ 0.55 | High load — 214 W, 78% of this PC's maximum |
 
 - **Hysteresis.** A scene is left only after the ratio crosses its threshold by 0.04: High load is kept down to 0.51 and Active down to 0.16.
 - **Dwell.** A change between live states shows only after the new state has held for 5 s. If the target changes again, or goes back to the current state, the timer starts over. Entering or leaving Waiting is immediate, and the first live reading picks its state directly. The scene never shows a made-up value: with no data it is grey, not idle.
@@ -349,9 +353,9 @@ The animals and fireflies are drawn on the coloured frame. The order is floor an
 - **Snail.** It creeps along the top of the log: one point every 10 steps when quiet, 6 when Active and 4 at High load.
 - **Fireflies.** They drift on slow sine paths and blink: bright with a soft halo, then dim, then hidden, on a 14-step cycle. They stay inside the dome and the air band and are only drawn at night.
 
-**Scale.** Integer only: `pixel_size = max(1, min(300 × k // 128, 320 × k // 160))`, with `k` the display scaling, drawn with nearest-neighbour scaling. The dome is centred in the left column, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`. If the display scaling changes while the window is open, for example when it moves to another monitor, the scene column, `pixel_size`, the gauge, the rules and bars, and the backdrop are recomputed from the new `k`.
+**Scale.** Integer only: `pixel_size = max(1, 360 × k // 168)`, with `k` the display scaling, drawn with nearest-neighbour scaling (see Power ring). The ring is centred in the left column and the dome is placed by whole native pixels around it, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`. If the display scaling changes while the window is open, for example when it moves to another monitor, the scene column, `pixel_size`, the ring and the labels around it, the rules and bars, and the backdrop are recomputed from the new `k`.
 
-**Rendering.** The coloured canopy frames and glass are kept per state and time of day, so a frame is one palette change on the floor plus a few composites and sprite pixels. Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
+**Rendering.** The coloured canopy frames and glass are kept per state and time of day, so a frame is one palette change on the floor plus a few composites and sprite pixels. Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The hover text is a canvas item in its own box. The power ring is a separate image placed above the scene, since it overlaps the corners of the scene's square.
 
 ### Animation
 
@@ -367,7 +371,7 @@ A pixel backdrop spans the whole window at the scene's `pixel_size`, so the deco
 
 - **Dark.** A faint diagonal dithered band, about 320 faint stars in three greys and 48 dim cream or teal ones, and 14 cross-shaped stars (a bright centre with four dim arms) that take turns twinkling.
 - **Light.** A sun at the top left with a dithered halo and eight short rays, faint diagonal light bands, up to 7 clouds, 14 seeds and 3 birds.
-- **Clear zones.** The widgets sit on the canvas with the background colour, so any decoration under them would show as a gap. Every decoration keeps 3 screen px (8 px for twinkling stars) away from the scene, the caption row, the gauge and every visible widget. The caption row is reserved from the layout rather than from the drawn text, so it is clear from the first frame. Hover text and hints sit in their own opaque box and come and go, so the backdrop doesn't make room for them. The backdrop is drawn again whenever the layout changes: a theme change, Settings opening or closing, the gauge moving, the breakdown gaining or losing a row, the display scaling changing. Requests made while one event is handled share a single redraw, and nothing is drawn until the first readings are on screen.
+- **Clear zones.** The widgets sit on the canvas with the background colour, so any decoration under them would show as a gap. Every decoration keeps 3 screen px (8 px for twinkling stars) away from the scene, the power ring and every visible widget. Hover text and hints sit in their own opaque box and come and go, so the backdrop doesn't make room for them. The backdrop is drawn again whenever the layout changes: a theme change, Settings opening or closing, the ring moving, the breakdown gaining or losing a row, the display scaling changing. Requests made while one event is handled share a single redraw, and nothing is drawn until the first readings are on screen.
 
 ### Settings view
 
@@ -407,16 +411,16 @@ The palette is Earth & amber. Every interface colour comes from `ui/theme.py`. T
 | text | `#F0E8DC` | `#2A2119` | Values, primary text |
 | text_muted | `#A3968A` | `#74675A` | Captions, labels, units |
 | text_faint | `#6E635A` | `#A99C8E` | Disabled text only |
-| accent | `#E8B866` | `#9A5F0E` | Lit gauge ticks, measured dots, links |
-| track | `#3A312A` | `#E6DDCF` | Unlit gauge ticks, bar tracks |
+| accent | `#E8B866` | `#9A5F0E` | The ring's value, the amount spent, measured dots, links |
+| track | `#3A312A` | `#E6DDCF` | The ring's track and minor ticks, bar tracks |
 | error | `#FF8A70` | `#B3261E` | Invalid fields, Reset confirmation |
 | focus | `#E8B866` | `#9A5F0E` | Focus ring |
 
 Contrast against the background and the surface: text, muted text and error are at least 4.5:1 in both themes, and the accent is at least 4.5:1 on the background (9.8:1 dark, 4.5:1 light). The focus ring is at least 3:1 on the background. `text_faint` is below 4.5:1 and is used only for disabled controls. `tests/test_theme.py` checks these ratios.
 
-- **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 54 (watts), 40 (cost), 22 (baht sign), 18 (watt unit), 17 (stat values), 13 (body), 11 (captions).
+- **Type:** Segoe UI, the Windows system font, with Segoe UI Light for the two large figures. Sizes: 46 (watts), 44 (cost), 22 (baht sign), 18 (watt unit), 17 (stat values), 13 (body), 11 (captions).
 - **Spacing:** 4-px grid (4 / 8 / 12 / 16 / 24), with 20 px left and 24 px right margins on the dashboard. Controls share one 8 px corner radius. No gradients, glow or emoji; the only imagery is the pixel scene.
-- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, the status dot changes shape when there is no live reading, and the scene state is also written in the caption. The theme and Settings buttons show only a glyph, so they name their action in a hint on hover and on keyboard focus.
+- **Accessibility:** full Tab order, visible focus ring, Enter/Space activate buttons, Esc leaves Settings. Colour is never the only signal: measured and estimated parts differ in dot shape and in the word beside it, the status dot changes shape when there is no live reading, and the load is also written under the dome as a usage label, with the scene state named in the dome's hover text. The theme and Settings buttons show only a glyph, so they name their action in a hint on hover and on keyboard focus.
 
 ## 7. Persistence
 
@@ -449,7 +453,7 @@ Two files in the same folder:
 |---|---|---|
 | `customtkinter` 6.x | Themed Tk widgets with built-in dark/light modes; small footprint, and bundles cleanly with PyInstaller | Pinned to major version 6 (`>=6.0,<7`) |
 | `nvidia-ml-py` | Official NVIDIA bindings for NVML | Pure Python; imported lazily so it is optional at runtime |
-| `pillow` 11+ | Indexed-palette sprites, nearest-neighbour scaling and compositing for the scene, and the gauge and backdrop images | MIT-CMU licence |
+| `pillow` 11+ | Indexed-palette sprites, nearest-neighbour scaling and compositing for the scene, and the ring and backdrop images | MIT-CMU licence |
 | dev: `pytest`, `ruff`, `mypy`, `pyinstaller` 6.22+ | Test, lint, type-check, build | PyInstaller 6.22 supports Python 3.15 |
 
 **Not used:**
