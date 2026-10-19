@@ -25,7 +25,7 @@ power_meter = [
     "data/holidays_th.json",
     "data/icon.ico",
     "data/scene/*.png",
-    "data/scene/paths.json",
+    "data/scene/scene.json",
 ]
 
 [tool.ruff]
