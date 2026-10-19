@@ -77,7 +77,7 @@ src/power_meter/
   data/
     holidays_th.json   bundled off-peak holidays
     icon.ico           window and exe icon
-    scene/             dome scene layers (back, canopy, glass PNGs) and particle paths
+    scene/             dome scene layers (back, canopy, glass PNGs), depth map and scene.json
   ui/
     app.py             main window: polling, view switching, theme, saving settings
     stage.py           window-filling canvas: backdrop, animated scene, caption, hover text, hints
@@ -90,7 +90,9 @@ src/power_meter/
     widgets.py         shared widgets: buttons, segmented control, dropdown, field, scroll area
     scene/
       state.py         scene state from the live load: thresholds, hysteresis, dwell
-      art.py           composes the layers and draws particles, rings and haze per frame
+      art.py           composes the layers and draws glow, rings, haze, particles and sparks
+      creatures.py     the rabbit, the snail and the fireflies
+      layout.py        reads scene.json: particle routes, core, log, rabbit loop, air band
       palette.py       colour roles and their per-state and daylight overrides
       backdrop.py      starry and daytime pixel backdrops
       motion.py        reads Windows' "Animation effects" setting
@@ -307,13 +309,14 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
 
 ### Scene
 
-The scene is a glass dome over a small tree with an energy crystal at its base. It is drawn at a native 128 × 160 px from three indexed PNG layers in `power_meter/data/scene/`:
+The scene is a glass dome seen from about 40° above: a mossy floor with a pond, stepping stones, a fallen log, bushes, ferns, rocks, mushrooms and flowers, a big tree, and an energy crystal at its foot. It is drawn at a native 128 × 160 px from layers in `power_meter/data/scene/`:
 
-- `back.png`: the air, the base, soil, stones, trunk, ground plants and the core.
+- `back.png`: the air, the base, the floor and its props, the trunk and the crystal.
 - `canopy.png`: three sway frames of the leaves side by side (384 × 160).
 - `glass.png`: the dome's glass and highlights.
+- `depth.png`: a greyscale map of how close each pixel of `back.png` is to the viewer (higher is closer, 0 where it is transparent), so the rabbit can pass behind the trunk, the crystal and the props.
 
-Index 0 is transparent and the layers share one 32-colour palette, plus a haze colour added at run time, so a state or the time of day is a palette change rather than a different picture. `paths.json` holds the routes, in native pixels, that the particles follow: roots, trunk and branches.
+Index 0 is transparent and the PNG layers share one 35-colour palette, so a state or the time of day is a palette change rather than a different picture. Four colours are added at run time: the haze and three glow colours (glow in the air, its brighter middle, and glow on the soil), mixed from the state's own core colour. `scene.json` holds the rest of the layout in native pixels: the particle routes along the roots, trunk and branches, the centre of the crystal, the snail's route along the log, the rabbit's loop (140 points, each with its depth) and its bed, and the band of rows the fireflies may use.
 
 **States.** The state comes from `ratio = wall_w / peak_w` of the latest snapshot (`peak_w` is the `P_peak` from §4). It uses its own thresholds, not the usage-label ones.
 
@@ -327,20 +330,28 @@ Index 0 is transparent and the layers share one 32-colour palette, plus a haze c
 - **Hysteresis.** A scene is left only after the ratio crosses its threshold by 0.04: High load is kept down to 0.51 and Active down to 0.16.
 - **Dwell.** A change between live states shows only after the new state has held for 5 s. If the target changes again, or goes back to the current state, the timer starts over. Entering or leaving Waiting is immediate, and the first live reading picks its state directly. The scene never shows a made-up value: with no data it is grey, not idle.
 
-**Per-state look.** The state changes the palette and the code-driven effects:
+**Per-state look.** Each state is clearly different at a glance. The living parts of the scene (soil, stone, bark, leaves, moss, mushrooms, flowers and water) are lit by a per-state factor, the greens are faded towards grey while the PC is quiet, and at higher loads the soil, bark, leaf tips and glass take on the crystal's colour:
 
-| State | Core | Leaves | Particles | Glow rings | Air haze |
-|---|---|---|---|---|---|
-| Waiting | grey | darkest greens | 0 | 0 | none |
-| Idle | teal, dim glow | slightly darker greens | 4 | 1 | 4% |
-| Active | teal, full glow | the drawn greens | 10 | 2 | 8% |
-| High load | each core colour one step brighter | lighter greens | 18 | 3 | 14% |
+| State | Core | Light | Greens | Particles | Rings | Haze | Glow radius | Sparks | Rabbit | Fireflies |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Waiting | grey | 55% | darkest, faded | 0 | 0 | none | – | 0 | asleep | 6 |
+| Idle | teal, dim glow | 66% | darker, faded | 3 | 1 | 4% | – | 0 | asleep | 10 |
+| Active | teal, full glow | 90% | the drawn greens | 10 | 2 | 8% | 16 px | 4 | hops round the tree | 4 |
+| High load | each core colour one step brighter | 106% | lighter greens | 26 | 3 | 14% | 30 px | 14 | hops twice as fast | 8 |
 
-The effects are drawn on the indexed image before it is coloured. Particles advance one path pixel per step, glow rings are dithered ellipses around the core whose pattern shifts every other step, and haze is ordered-dither (4 × 4 Bayer) pixels on the air. By day the air, glass and highlight colours switch to lighter ones.
+By day the light factor is moved 60% of the way back towards 100%, so the day scene is not darkened as much.
+
+The effects on the floor are drawn on the indexed image before it is coloured. Particles advance one path pixel per step; glow rings are dithered ellipses around the core whose pattern shifts every other step; the glow is an ordered-dither (4 × 4 Bayer) disc around the crystal that recolours air and soil; sparks rise from the crystal through the air band; and haze is dithered pixels on the air. By day the air, glass and highlight colours switch to lighter ones.
+
+The animals and fireflies are drawn on the coloured frame. The order is floor and effects, rabbit, canopy, snail, glass, fireflies: the leaves can hide the rabbit but never the snail, and only the fireflies are drawn over the glass.
+
+- **Rabbit.** While the PC is quiet (Waiting or Idle) it sleeps at its bed with a small "z" that blinks. When Active it hops one loop point per step round the tree, two per step at High load, lifting 2–3 px on each hop and facing the way it goes. Each of its pixels is drawn only where nothing in `back.png` is closer, using `depth.png`.
+- **Snail.** It creeps along the top of the log: one point every 10 steps when quiet, 6 when Active and 4 at High load.
+- **Fireflies.** They drift on slow sine paths and blink: bright with a soft halo, then dim, then hidden, on a 14-step cycle. They stay inside the dome and the air band and are only drawn at night.
 
 **Scale.** Integer only: `pixel_size = max(1, min(300 × k // 128, 320 × k // 160))`, with `k` the display scaling, drawn with nearest-neighbour scaling. The dome is centred in the left column, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`. If the display scaling changes while the window is open, for example when it moves to another monitor, the scene column, `pixel_size`, the gauge, the rules and bars, and the backdrop are recomputed from the new `k`.
 
-**Rendering.** Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
+**Rendering.** The coloured canopy frames and glass are kept per state and time of day, so a frame is one palette change on the floor plus a few composites and sprite pixels. Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The caption and the hover text are canvas items, which keeps them on the backdrop colour.
 
 ### Animation
 

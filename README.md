@@ -29,10 +29,12 @@ numbers come from real sensors and which are estimates.
   including Thai public holidays that are billed at the off-peak rate.
 - **Monthly estimate.** "If you use your PC like this 5 hours a day: ≈ ฿167 per month", based on
   the current session.
-- **A scene that follows the load.** A pixel-art glass dome with a tree and a glowing core sits
-  next to the numbers. It has four states: idle, active, high load and "waiting for live data". The
-  core brightens and more particles flow as the load rises, and the scene goes grey when there are
-  no readings, so it never shows a state the app has not measured.
+- **A scene that follows the load.** A pixel-art glass dome, seen from above, with a pond, a fallen
+  log, mushrooms and flowers under a big tree, sits next to the numbers. It has four states: idle,
+  active, high load and "waiting for live data". As the load rises the floor brightens and takes on
+  the crystal's glow, sparks and particles flow, and the rabbit wakes up and hops round the tree;
+  when the PC is quiet it sleeps while fireflies drift about. The scene goes grey when there are no
+  readings, so it never shows a state the app has not measured.
 - **Earth and amber themes, dark and light.** Dark has a starry backdrop and light a daytime one;
   switch at any time. The tick gauge shows the current load against this PC's maximum.
 - **Calm by choice.** The scene animates at 8 frames per second and stops while the window is
