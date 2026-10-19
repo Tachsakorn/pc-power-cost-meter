@@ -50,12 +50,16 @@ jobs:
           "$hash  PCPowerCostMeter.exe" | Set-Content -Encoding ascii dist\SHA256SUMS.txt
           Get-Content dist\SHA256SUMS.txt
 
+      - name: Write third-party notices
+        run: python packaging/notices.py dist/THIRD-PARTY-NOTICES.txt
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
           path: |
             dist/PCPowerCostMeter.exe
             dist/SHA256SUMS.txt
+            dist/THIRD-PARTY-NOTICES.txt
           if-no-files-found: error
 
   release:
@@ -75,4 +79,5 @@ jobs:
           files: |
             release-files/PCPowerCostMeter.exe
             release-files/SHA256SUMS.txt
+            release-files/THIRD-PARTY-NOTICES.txt
           fail_on_unmatched_files: true

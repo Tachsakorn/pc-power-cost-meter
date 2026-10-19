@@ -9,3 +9,4 @@ config.json
 state.json
 *.log.*
 *.bak
+THIRD-PARTY-NOTICES.txt

@@ -37,3 +37,6 @@ jobs:
 
       - name: Pytest
         run: pytest -q
+
+      - name: Third-party notices
+        run: python packaging/notices.py THIRD-PARTY-NOTICES.txt

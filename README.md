@@ -408,6 +408,10 @@ The design notes behind the app are in [docs/design.md](docs/design.md).
 
 MIT. See [LICENSE](LICENSE).
 
+The exe also contains Python and the libraries listed under [Acknowledgements](#acknowledgements),
+each under its own licence. Their licence texts are published with every release as
+`THIRD-PARTY-NOTICES.txt`; `packaging/notices.py` writes that file at build time.
+
 ## Disclaimer
 
 The figures this app shows are estimates for personal information. It is not a billing or metering
@@ -416,8 +420,11 @@ affiliated with MEA, PEA, AMD, NVIDIA or Microsoft.
 
 ## Acknowledgements
 
+- [Python](https://www.python.org/) (PSF licence), with Tkinter and Tcl/Tk.
 - [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) by Tom Schimansky (MIT), for the
-  user interface.
+  user interface, and the libraries it uses:
+  [darkdetect](https://github.com/albertosottile/darkdetect) (BSD) and
+  [packaging](https://github.com/pypa/packaging) (Apache-2.0 or BSD).
 - [Pillow](https://python-pillow.github.io/) (MIT-CMU), which scales the scene and draws the power
   ring and backdrop.
 - [nvidia-ml-py](https://pypi.org/project/nvidia-ml-py/), NVIDIA's Python bindings for NVML (BSD).
