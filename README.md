@@ -9,12 +9,12 @@ It runs fully offline, needs no administrator rights and no helper software, and
 numbers come from real sensors and which are estimates.
 
 <p align="center">
-  <img src="docs/screenshots/main-dark.png" alt="Main window in dark mode" width="300">
-  <img src="docs/screenshots/main-light.png" alt="Main window in light mode" width="300">
+  <img src="docs/screenshots/main-dark.png" alt="Main window in dark mode" width="380">
+  <img src="docs/screenshots/main-light.png" alt="Main window in light mode" width="380">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings-dark.png" alt="Settings in dark mode" width="300">
-  <img src="docs/screenshots/settings-light.png" alt="Settings in light mode" width="300">
+  <img src="docs/screenshots/settings-dark.png" alt="Settings in dark mode" width="380">
+  <img src="docs/screenshots/settings-light.png" alt="Settings in light mode" width="380">
 </p>
 
 ## Features
