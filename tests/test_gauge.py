@@ -3,11 +3,15 @@ import math
 import pytest
 from PIL import Image
 
-from power_meter.ui.gauge import RingColours, margin, on_ring, render_ring
+from power_meter.ui.gauge import RingArt, RingColours, margin, on_ring
 
-COLOURS = RingColours(value="#E8B866", track="#3A312A", tick="#3A312A", major_tick="#6E635A")
+COLOURS = RingColours(value="#E8B866", track="#3A312A", tick="#3A312A", major_tick="#A3968A")
 VALUE_RGB = (0xE8, 0xB8, 0x66)
 RADIUS = 144
+
+
+def render_ring(fraction: float, k: float = 1.0) -> Image.Image:
+    return RingArt(COLOURS, RADIUS, k).render(fraction)
 
 
 def is_value(pixel: tuple[int, ...]) -> bool:
@@ -28,7 +32,7 @@ def value_at(image: Image.Image, fraction: float) -> bool:
 
 
 def test_ring_is_a_transparent_square_centred_on_the_ring() -> None:
-    image = render_ring(0.5, COLOURS, RADIUS, 1.0)
+    image = render_ring(0.5)
     assert image.size == (2 * (RADIUS + margin(1.0)),) * 2
     assert image.mode == "RGBA"
     assert image.getpixel((0, 0))[3] == 0
@@ -36,7 +40,7 @@ def test_ring_is_a_transparent_square_centred_on_the_ring() -> None:
 
 
 def test_value_fills_the_ring_from_its_start_up_to_the_fraction() -> None:
-    image = render_ring(0.4, COLOURS, RADIUS, 1.0)
+    image = render_ring(0.4)
 
     assert value_at(image, 0.05)
     assert value_at(image, 0.35)
@@ -45,13 +49,13 @@ def test_value_fills_the_ring_from_its_start_up_to_the_fraction() -> None:
 
 
 def test_more_power_lights_more_of_the_ring() -> None:
-    low = render_ring(0.2, COLOURS, RADIUS, 1.0)
-    high = render_ring(0.8, COLOURS, RADIUS, 1.0)
+    low = render_ring(0.2)
+    high = render_ring(0.8)
     assert count_value(high) > count_value(low) > 0
 
 
 def test_nothing_is_lit_at_zero() -> None:
-    assert count_value(render_ring(0.0, COLOURS, RADIUS, 1.0)) == 0
+    assert count_value(render_ring(0.0)) == 0
 
 
 def test_ring_opens_at_the_bottom() -> None:
@@ -62,17 +66,26 @@ def test_ring_opens_at_the_bottom() -> None:
 
 
 def test_strokes_scale_with_the_ui() -> None:
-    image = render_ring(0.5, COLOURS, RADIUS, 2.0)
+    image = render_ring(0.5, 2.0)
     assert image.size == (2 * (RADIUS + margin(2.0)),) * 2
-    assert count_value(image) > count_value(render_ring(0.5, COLOURS, RADIUS, 1.0))
+    assert count_value(image) > count_value(render_ring(0.5))
 
 
 @pytest.mark.parametrize("fraction", [-1.0, math.nan])
 def test_ring_clamps_bad_fractions(fraction: float) -> None:
-    expected = render_ring(0.0, COLOURS, RADIUS, 1.0)
-    assert render_ring(fraction, COLOURS, RADIUS, 1.0).tobytes() == expected.tobytes()
+    expected = render_ring(0.0)
+    assert render_ring(fraction).tobytes() == expected.tobytes()
+
+
+def test_the_start_cap_is_whole_at_any_fraction() -> None:
+    centre = render_ring(0.5).width / 2
+    x, y = on_ring(RADIUS, 0.0)
+    for fraction in (0.001, 0.5, 1.0):
+        image = render_ring(fraction)
+        # A point on the start cap, beyond the start of the ring.
+        assert is_value(image.getpixel((round(centre + x - 1), round(centre + y + 1))))
 
 
 def test_ring_clamps_fractions_above_one() -> None:
-    expected = render_ring(1.0, COLOURS, RADIUS, 1.0)
-    assert render_ring(3.0, COLOURS, RADIUS, 1.0).tobytes() == expected.tobytes()
+    expected = render_ring(1.0)
+    assert render_ring(3.0).tobytes() == expected.tobytes()

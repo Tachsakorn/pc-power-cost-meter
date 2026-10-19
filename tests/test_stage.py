@@ -210,6 +210,18 @@ def test_tooltip_appears_on_hover(window: ctk.CTk, art: SceneArt) -> None:
     assert tooltip_texts(stage) == []
 
 
+def test_tooltip_appears_through_a_placed_image(window: ctk.CTk, art: SceneArt) -> None:
+    stage = make_stage(window, art)
+    left, top, right, bottom = stage.bbox("scene")
+    stage.place_image("ring", Image.new("RGBA", (right - left, bottom - top)), left, top)
+    x, y = (left + right) // 2, (top + bottom) // 2
+
+    stage.event_generate("<Enter>", x=x, y=y)
+    stage.event_generate("<Motion>", x=x, y=y)
+
+    assert tooltip_texts(stage) == [TOOLTIP]
+
+
 def test_twinkling_stars_keep_clear_of_widgets(window: ctk.CTk, art: SceneArt) -> None:
     stage = make_stage(window, art)
     panel = tkinter.Frame(stage, width=420, height=520, bg=DARK.background)

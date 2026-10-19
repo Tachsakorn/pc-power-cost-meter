@@ -305,11 +305,13 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
 
 ### Power ring
 
-A 260° ring that opens at the bottom, under the dome's base, from 140° clockwise to 40° (Pillow's angles, clockwise from three o'clock). A 6 px track is drawn in the track colour and the value in the accent colour from the start of the ring up to the lit fraction, both with round ends. Outside it, 41 ticks mark the scale; every tenth is longer and drawn in the faint text colour. The lit fraction is the displayed watts (the 3-sample average under the dome) over `peak_w`, clamped to 0–1, so the ring agrees with the number and shares the usage label's peak.
+A 260° ring that opens at the bottom, under the dome's base, from 140° clockwise to 40° (Pillow's angles, clockwise from three o'clock). A 6 px track is drawn in the track colour and the value in the accent colour from the start of the ring up to the lit fraction, both with round ends. Outside it, 41 ticks mark the scale in the track colour; every tenth is longer and drawn in the muted text colour. The lit fraction is the displayed watts (the 3-sample average under the dome) over `peak_w`, clamped to 0–1, so the ring agrees with the number and shares the usage label's peak.
 
 The ring's centre and radius are set in the scene's native pixels (centre (64, 82), radius 72), so it clears the dome's knob and base at every scale. The scene is drawn at the largest whole scale at which the ring and its ticks (168 native px) fit the scene column: 2× at 100% and 125% display scaling, 3× at 150% and 175%, 4× at 200%. The ring's strokes follow the display scaling.
 
-A change of more than 1.5% of the scale eases towards the new reading, covering 35% of the remaining distance every 40 ms; smaller changes are drawn at once. Easing never delays or alters a reading: it only interpolates what is drawn between two readings, and it is off whenever the scene's animation is off. The ring is rendered with Pillow at twice the size, box-filtered down, and redrawn only when its sweep (to 1/1560 of the scale), the palette or the display scaling changes.
+A change of more than 1.5% of the scale eases towards the new reading, covering 35% of the remaining distance every 40 ms; smaller changes are drawn at once. Easing never delays or alters a reading: it only interpolates what is drawn between two readings. It is off whenever the scene's animation is off and while the window is minimised.
+
+The track with its ticks, and the value arc at full length, are drawn once per palette and size with Pillow at twice the size and box-filtered down. Each frame copies the track, cuts the value arc to the fraction with a pie-slice mask, and adds the round end, which covers the mask's unsmoothed edge; that keeps a frame to a few milliseconds even at 200% scaling. The ring is redrawn only when its sweep (to 1/1560 of the scale), the palette or the display scaling changes. It ignores the pointer, so the dome's hover text works through it.
 
 ### Scene
 
@@ -409,7 +411,7 @@ The palette is Earth & amber. Every interface colour comes from `ui/theme.py`. T
 | surface | `#231E1A` | `#FBF7F0` | Raised controls, hover text and hint boxes |
 | line | `#332B25` | `#E2D8C8` | Rules, outlines |
 | text | `#F0E8DC` | `#2A2119` | Values, primary text |
-| text_muted | `#A3968A` | `#74675A` | Captions, labels, units |
+| text_muted | `#A3968A` | `#74675A` | Captions, labels, units, the ring's major ticks |
 | text_faint | `#6E635A` | `#A99C8E` | Disabled text only |
 | accent | `#E8B866` | `#9A5F0E` | The ring's value, the amount spent, measured dots, links |
 | track | `#3A312A` | `#E6DDCF` | The ring's track and minor ticks, bar tracks |

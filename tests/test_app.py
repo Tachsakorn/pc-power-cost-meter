@@ -17,10 +17,9 @@ from power_meter.sampler import MeterState, Sampler
 from power_meter.settings import MeterType, Settings, default_settings
 from power_meter.tariff import HolidayCalendar
 from power_meter.ui import app as app_module
-from power_meter.ui import main_view as main_view_module
 from power_meter.ui import stage as stage_module
 from power_meter.ui.app import HEIGHT, WIDTH, App, measured_components
-from power_meter.ui.gauge import margin, render_ring
+from power_meter.ui.gauge import RingArt, margin
 from power_meter.ui.main_view import RESET_MIN_GAP_S
 from power_meter.ui.scene.backdrop import Backdrop
 from power_meter.ui.stage import Stage
@@ -548,11 +547,13 @@ def test_ring_jumps_to_new_readings_when_windows_animations_are_off(
     monkeypatch.setattr(app_module, "windows_animations_enabled", lambda: False)
     drawn: list[float] = []
 
-    def recording(fraction: float, *args: Any) -> Image.Image:
-        drawn.append(fraction)
-        return render_ring(fraction, *args)
+    render = RingArt.render
 
-    monkeypatch.setattr(main_view_module, "render_ring", recording)
+    def recording(art: RingArt, fraction: float) -> Image.Image:
+        drawn.append(fraction)
+        return render(art, fraction)
+
+    monkeypatch.setattr(RingArt, "render", recording)
     sampler = FakeSampler()
     app = open_app(tmp_path, sampler)
     try:

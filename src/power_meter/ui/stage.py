@@ -113,6 +113,8 @@ class Stage(tkinter.Canvas):
         self.delete("hint")
 
     def place_image(self, tag: str, image: Image.Image, x: int, y: int) -> None:
+        """Shows `image` above the scene. It takes no pointer events, so the scene under its
+        transparent parts still shows its hover text."""
         photo = self._placed.get(tag)
         exists = bool(self.find_withtag(tag))
         if exists and photo is not None and (photo.width(), photo.height()) == image.size:
@@ -125,7 +127,7 @@ class Stage(tkinter.Canvas):
             self.itemconfigure(tag, image=photo)
             self.coords(tag, x, y)
         else:
-            self.create_image(x, y, anchor="nw", image=photo, tags=tag)
+            self.create_image(x, y, anchor="nw", image=photo, tags=tag, state="disabled")
 
     def show_scene(self, state: SceneState, tooltip: str) -> None:
         changed = state is not self._state

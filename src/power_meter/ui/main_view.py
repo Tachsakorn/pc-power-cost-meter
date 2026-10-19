@@ -17,9 +17,9 @@ from power_meter.ui.gauge import (
     STROKE,
     TICK_GAP,
     TICK_MAJOR,
+    RingArt,
     RingColours,
     on_ring,
-    render_ring,
 )
 from power_meter.ui.stage import Stage
 from power_meter.ui.theme import Palette
@@ -203,6 +203,8 @@ class MainView:
         self._shown: float | None = None
         self._ease_job: str | None = None
         self._ring_key: tuple[int, Palette, tuple[int, int, int]] | None = None
+        self._ring_art: tuple[tuple[Palette, int, float], RingArt] | None = None
+        self._refit_job: str | None = None
         self._icons = pick_icons(stage)
 
         family, light = theme.FONT_FAMILY, theme.FONT_LIGHT
@@ -503,12 +505,19 @@ class MainView:
         self._target = fraction
         if not self._visible or self._ease_job is not None:
             return
-        if self._shown is None or not self._animate or abs(fraction - self._shown) < EASE_FROM:
+        if self._shown is None or not self._easing() or abs(fraction - self._shown) < EASE_FROM:
             self._settle_ring()
         else:
             self._ease()
 
+    def _easing(self) -> bool:
+        # Not while the window is minimised, where nobody would see the frames.
+        return self._animate and bool(self._stage.winfo_viewable())
+
     def _ease(self) -> None:
+        if not self._easing():
+            self._settle_ring()
+            return
         shown = self._target if self._shown is None else self._shown
         shown += (self._target - shown) * EASE_STEP
         if abs(self._target - shown) < EASE_DONE:
@@ -540,12 +549,18 @@ class MainView:
             return
         moved = self._ring_key is None or self._ring_key[2] != ring
         self._ring_key = key
-        colours = RingColours(palette.accent, palette.track, palette.track, palette.text_faint)
-        image = render_ring(step / RING_STEPS, colours, ring.radius, self._k)
+        image = self._art_for(palette, ring.radius).render(step / RING_STEPS)
         half = image.width // 2
         self._stage.place_image(RING_TAG, image, ring.x - half, ring.y - half)
         if moved:
             self._stage.request_backdrop()
+
+    def _art_for(self, palette: Palette, radius: int) -> RingArt:
+        key = (palette, radius, self._k)
+        if self._ring_art is None or self._ring_art[0] != key:
+            colours = RingColours(palette.accent, palette.track, palette.track, palette.text_muted)
+            self._ring_art = (key, RingArt(colours, radius, self._k))
+        return self._ring_art[1]
 
     def _rescale(self, widget_scaling: float, _window_scaling: float) -> None:
         self._k = widget_scaling
@@ -554,10 +569,12 @@ class MainView:
         for cells in self._detail_cells:
             cells.track.configure(height=self._px(BAR_H))
             cells.track.grid_configure(pady=(self._px(XS), 0))
-        # The stage refits its scene in its own scaling callback, which may run after this one.
-        self._stage.after_idle(self._refit)
+        # Once every scaling callback has run, so the stage has refitted its scene by then.
+        if self._refit_job is None:
+            self._refit_job = self._stage.after_idle(self._refit)
 
     def _refit(self) -> None:
+        self._refit_job = None
         self._ring_key = None
         self._place_ring_labels()
         self._draw_ring()
@@ -635,6 +652,9 @@ class MainView:
         self._visible = False
         ctk.ScalingTracker.remove_widget(self._rescale, self._stage)
         self._cancel_ease()
+        if self._refit_job is not None:
+            self._stage.after_cancel(self._refit_job)
+            self._refit_job = None
         if self._reset_job is not None:
             self._stage.after_cancel(self._reset_job)
             self._reset_job = None

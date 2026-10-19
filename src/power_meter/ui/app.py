@@ -120,7 +120,7 @@ class App(ctk.CTk):
 
     def _start(self) -> None:
         # The first readings are shown before the stage starts, so its first backdrop is laid
-        # out around the dashboard and the scene caption as they will look.
+        # out around the dashboard as it will look.
         try:
             self._poll()
         finally:

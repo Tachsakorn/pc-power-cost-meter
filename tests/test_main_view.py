@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from power_meter.ui import main_view
-from power_meter.ui.gauge import margin, render_ring
+from power_meter.ui.gauge import RingArt, margin
 from power_meter.ui.main_view import (
     ESTIMATES_ONLY,
     RESTARTING,
@@ -93,11 +93,13 @@ def pump(widget: tkinter.Misc, seconds: float = 0.2) -> None:
 def drawn(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     fractions: list[float] = []
 
-    def recording(fraction: float, *args: Any) -> Image.Image:
-        fractions.append(fraction)
-        return render_ring(fraction, *args)
+    render = RingArt.render
 
-    monkeypatch.setattr(main_view, "render_ring", recording)
+    def recording(art: RingArt, fraction: float) -> Image.Image:
+        fractions.append(fraction)
+        return render(art, fraction)
+
+    monkeypatch.setattr(RingArt, "render", recording)
     return fractions
 
 
@@ -142,6 +144,32 @@ def test_turning_animation_off_finishes_the_ease(stage: Stage, drawn: list[float
     assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
     pump(stage, 0.2)
     assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
+
+
+def pending_eases(widget: tkinter.Misc) -> int:
+    jobs = widget.tk.splitlist(widget.tk.call("after", "info"))
+    return sum("_ease" in str(widget.tk.call("after", "info", job)[0]) for job in jobs)
+
+
+def test_hiding_the_dashboard_stops_the_ease(stage: Stage) -> None:
+    view = make_view(stage, animate=True)
+    view.render(replace(BASE, gauge_fraction=0.8))
+    assert pending_eases(stage) == 1
+
+    view.hide()
+
+    assert pending_eases(stage) == 0
+
+
+def test_no_easing_while_the_window_is_minimised(stage: Stage, drawn: list[float]) -> None:
+    view = make_view(stage, animate=True)
+    stage.winfo_toplevel().withdraw()
+    stage.update()
+
+    view.render(replace(BASE, gauge_fraction=0.8))
+
+    assert drawn[-1] == pytest.approx(0.8, abs=1e-3)
+    assert pending_eases(stage) == 0
 
 
 def test_ring_is_centred_on_the_stage_ring(stage: Stage) -> None:
