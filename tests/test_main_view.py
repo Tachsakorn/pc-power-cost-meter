@@ -52,6 +52,8 @@ def stage() -> Iterator[Stage]:
     except tkinter.TclError as exc:
         pytest.skip(f"Tk can't open a window here: {exc}")
     root.geometry("760x600")
+    # On Windows a CTk window stays hidden until CTk's own update() first runs.
+    root.update()
     stage = Stage(root, DARK, False, SceneArt.bundled())
     stage.pack(fill="both", expand=True)
     yield stage

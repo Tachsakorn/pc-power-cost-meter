@@ -27,6 +27,12 @@ from power_meter.ui.theme import DARK, LIGHT
 from power_meter.ui.widgets import HAIR_SPACE, Checkbox
 
 
+@pytest.fixture(autouse=True)
+def windows_animations_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Build machines often turn Windows' animation effects off; these tests assume them on."""
+    monkeypatch.setattr(app_module, "windows_animations_enabled", lambda: True)
+
+
 def snapshot(*parts: Part, on_battery: bool = False) -> PowerSnapshot:
     return PowerSnapshot(
         wall_w=100.0,
