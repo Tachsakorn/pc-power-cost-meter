@@ -389,7 +389,7 @@ def test_monthly_is_muted_until_ready(stage: Stage) -> None:
     view = make_view(stage)
     assert view._monthly.cget("text_color") == DARK.text
 
-    view.render(replace(BASE, monthly="ready in 30 s", monthly_ready=False))
+    view.render(replace(BASE, monthly="Estimating… 30 s", monthly_ready=False))
     assert view._monthly.cget("text_color") == DARK.text_muted
 
     view.render(BASE)

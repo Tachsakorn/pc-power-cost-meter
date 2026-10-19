@@ -95,7 +95,7 @@ the right. Settings replaces the dashboard and leaves the scene in view.
   confirm.
 - **Per hour, right now**, **per month** and **hours used a day** give the cost at the current
   price and the monthly estimate; the stepper sets how many hours a day you use the PC. Per month
-  shows "ready in … s" until the app has a minute of readings.
+  shows "Estimating… N s" until the app has a minute of readings.
 - **Breakdown** lists CPU, GPU, other components and power-supply loss, each with its share of the
   total and marked *measured* (filled dot, solid bar) or *estimated* (hollow dot, dashed bar).
 - **Settings** sets your meter type and price, the theme, whether the scene animates, and under

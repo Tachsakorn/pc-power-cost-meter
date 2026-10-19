@@ -56,7 +56,7 @@ def test_warming_up_shows_dash() -> None:
     assert vm.load == ""
     assert vm.peak == ""
     assert vm.details == ()
-    assert vm.monthly == "ready in 60 s"
+    assert vm.monthly == "Estimating… 60 s"
     assert vm.monthly_ready is False
 
 
@@ -123,7 +123,9 @@ def test_monthly_follows_hours_per_day() -> None:
     assert vm.hours_per_day == 24
 
 
-@pytest.mark.parametrize(("elapsed_s", "text"), [(30.0, "ready in 30 s"), (59.2, "ready in 1 s")])
+@pytest.mark.parametrize(
+    ("elapsed_s", "text"), [(30.0, "Estimating… 30 s"), (59.2, "Estimating… 1 s")]
+)
 def test_monthly_counts_down_until_there_is_enough_data(elapsed_s: float, text: str) -> None:
     short_session = Totals(cost_thb=0.002, energy_kwh=0.0004, elapsed_s=elapsed_s)
     state = replace(RUNNING, session=short_session)

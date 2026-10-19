@@ -261,7 +261,7 @@ avg_cost_per_hour = session_cost / session_hours
 monthly           ≈ avg_cost_per_hour × hours_per_day × 30
 ```
 
-- Shown only after 60 s of session data. Before that it counts down: "ready in 45 s".
+- Shown only after 60 s of session data. Before that it counts down: "Estimating… 45 s".
 - `hours_per_day` defaults to 5, range 1–24, and is persisted.
 - "Session" means since the app started, so the projection follows current behaviour rather than the all-time total.
 
@@ -297,7 +297,7 @@ The window is fixed at 760 × 600 logical px (customtkinter's scaling applies). 
 - **Status line.** "● Live" while readings arrive, "○ Starting up" before the first one, or the active notice (see States). The dot is in the accent colour only while a live reading is shown with no notice; during a notice it is muted, and with no running reading (warming up or restarting) it becomes a hollow "○". The theme and Settings buttons are square icon buttons at the right end, using Segoe Fluent Icons or Segoe MDL2 Assets when installed and text symbols otherwise. Hovering or focusing either one shows a small hint under it ("Light mode" or "Dark mode", "Settings"), drawn like the scene's hover text; it goes away on leave, loss of focus or a click.
 - **Power ring and readout.** The ring wraps the dome, so the scene and the gauge read as one instrument. Under the dome: watts in a large light weight with a small "W" and the usage label. "0" and the PC's peak watts (`P_peak`) sit just past the ticks at the ring's two ends.
 - **Spent since last reset.** The total that persists across restarts until Reset, in the accent colour with four decimals and a small "฿", then how long the meter has run in that time ("2 h 15 min measured"; time with the app closed or the PC asleep is not counted). Billing uses raw samples; the displayed watts are smoothed over the last 3 samples.
-- **Figures.** Label-and-value rows: the cost per hour at the current draw and price, the monthly estimate, and hours used a day (a 1–24 stepper that saves on every change). Until there is a minute of session data the monthly row reads "ready in N s" in the muted colour (§5).
+- **Figures.** Label-and-value rows: the cost per hour at the current draw and price, the monthly estimate, and hours used a day (a 1–24 stepper that saves on every change). Until there is a minute of session data the monthly row reads "Estimating… N s" in the muted colour (§5).
 - **Breakdown.** Two lines per part: name, watts, and a dot with the detail text; then a thin bar under the name and watts showing its share of the whole draw, so the bars add up to the reading. CPU (or the battery), GPU and other components each have their own colour for the dot and the bar; losses and extras are neutral. A measured part has a filled dot and a solid bar, an estimate a hollow dot and a dashed bar. Before the first reading it reads "Waiting for the first reading".
 - **Footer.** Across the window: the price line and **Change** on the left, **Reset** on the right. With TOU selected the price line reads `TOU · Peak ฿6.38 now · Off-peak from 22:00`. Reset asks for confirmation by changing to "Click again to reset" for 3 s, and ignores a second click within 0.4 s of the first. No modal dialog.
 - Copy is short and label-style. Pixel art is never used for text or values.

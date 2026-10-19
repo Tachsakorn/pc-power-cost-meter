@@ -106,7 +106,7 @@ def build_view_model(
     projected = monthly_cost(state.session, settings.hours_per_day)
     if projected is None:
         wait_s = max(1, math.ceil(MIN_SESSION_S - state.session.elapsed_s))
-        monthly = f"ready in {wait_s} s"
+        monthly = f"Estimating… {wait_s} s"
     else:
         monthly = f"≈ {baht_short(projected)}"
 
