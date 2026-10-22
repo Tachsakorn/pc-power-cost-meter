@@ -31,6 +31,9 @@ type Theme = Literal["dark", "light"]
 TITLE: Final = "PC Power & Cost Meter"
 WIDTH, HEIGHT = WINDOW
 POLL_MS: Final = 250
+# customtkinter checks the system theme every 30 ms. The app always sets its own theme, so the
+# check never changes anything; running it rarely saves waking the CPU 33 times a second.
+APPEARANCE_CHECK_MS: Final = 1000
 NO_DATA_DIR: Final = "None — no writable folder on this PC"
 
 XS, S, M, L, XL = theme.SPACE
@@ -72,6 +75,7 @@ class App(ctk.CTk):
         save_settings: Callable[[Settings], None],
         on_close: Callable[[], None],
     ) -> None:
+        ctk.AppearanceModeTracker.update_loop_interval = APPEARANCE_CHECK_MS
         ctk.set_appearance_mode(settings.theme)
         super().__init__()
         self._sampler = sampler
@@ -84,6 +88,7 @@ class App(ctk.CTk):
         self._save_failed = False
         self._settings_view: SettingsView | None = None
         self._tracker = StateTracker()
+        self._rendered: object = None
         self._theme: Theme = settings.theme
 
         self.title(TITLE)
@@ -130,9 +135,15 @@ class App(ctk.CTk):
         # Scheduled first, so one failed render doesn't freeze the display for good.
         self._poll_job = self.after(POLL_MS, self._poll)
         can_save = self._data_dir is not None and not self._save_failed
-        rate = self._tariff.rate_at(datetime.now())
+        now = datetime.now()
+        rate = self._tariff.rate_at(now)
         state = self._sampler.latest()
-        self._main_view.render(build_view_model(state, self._settings, rate, can_save=can_save))
+        # A new reading comes once a second, so most polls have nothing new to show. The date
+        # is in the key because the price line names the day of the next TOU change.
+        rendered = (state, self._settings, rate, can_save, now.date())
+        if rendered != self._rendered:
+            self._main_view.render(build_view_model(state, self._settings, rate, can_save=can_save))
+            self._rendered = rendered
         scene = self._tracker.update(state)
         self._stage.show_scene(scene, describe(scene, state.snapshot))
 

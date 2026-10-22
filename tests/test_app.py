@@ -358,6 +358,14 @@ def test_layout_follows_a_scaling_change_after_startup(
         close(app)
 
 
+def test_system_theme_is_not_polled_many_times_a_second(tmp_path: Path) -> None:
+    app = open_app(tmp_path, FakeSampler())
+    try:
+        assert ctk.AppearanceModeTracker.update_loop_interval >= 1000
+    finally:
+        close(app)
+
+
 def test_status_follows_the_sampler(tmp_path: Path) -> None:
     sampler = FakeSampler()
     running = sampler.state
@@ -370,6 +378,30 @@ def test_status_follows_the_sampler(tmp_path: Path) -> None:
         sampler.state = running
         pump(app)
         assert status.cget("text") == "Live"
+    finally:
+        close(app)
+
+
+def test_dashboard_renders_only_when_something_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sampler = FakeSampler()
+    app = open_app(tmp_path, sampler)
+    renders: list[object] = []
+    original = app._main_view.render
+    monkeypatch.setattr(app._main_view, "render", lambda vm: (renders.append(vm), original(vm)))
+    try:
+        pump(app, 0.6)
+        assert renders == []
+
+        sampler.state = replace(sampler.state, display_w=120.0)
+        pump(app, 0.6)
+        assert len(renders) == 1
+        assert app._main_view._watts.cget("text") == "120"
+
+        app._hours_changed(3)
+        pump(app, 0.6)
+        assert len(renders) == 2
     finally:
         close(app)
 
