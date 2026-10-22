@@ -72,6 +72,7 @@ class Stage(tkinter.Canvas):
         self._backdrop: Backdrop | None = None
         self._backdrop_photo: ImageTk.PhotoImage | None = None
         self._scene_photo: ImageTk.PhotoImage | None = None
+        self._scene_base: Image.Image | None = None
         self._placed: dict[str, ImageTk.PhotoImage] = {}
 
         self._toplevel = self.winfo_toplevel()
@@ -87,6 +88,7 @@ class Stage(tkinter.Canvas):
     def set_theme(self, palette: Palette, daylight: bool) -> None:
         self._palette = palette
         self._daylight = daylight
+        self._scene_base = None
         self.configure(bg=palette.background)
         if self._hovering:
             self._draw_tooltip()
@@ -180,6 +182,7 @@ class Stage(tkinter.Canvas):
         left = self.ring.x - RING_CENTRE_NATIVE[0] * scale
         top = self.ring.y - RING_CENTRE_NATIVE[1] * scale
         self._scene_box: Rect = (left, top, left + NATIVE[0] * scale, top + NATIVE[1] * scale)
+        self._scene_base = None
 
     @property
     def scene_bottom(self) -> int:
@@ -262,6 +265,7 @@ class Stage(tkinter.Canvas):
             self._palette.background,
         )
         self._backdrop = backdrop
+        self._scene_base = None
         self._size = (width, height)
         photo = self._backdrop_photo
         if photo is not None and (photo.width(), photo.height()) == (width, height):
@@ -302,12 +306,15 @@ class Stage(tkinter.Canvas):
         left, top, right, bottom = self._scene_box
         size = (right - left, bottom - top)
         art = self._art.frame(self._state, self._tick, self._daylight, self._animate)
-        scene = Image.new("RGB", size, self._palette.background)
-        if self._backdrop is not None:
-            scene.paste(self._backdrop.image, (-left, -top))
-        scene = scene.convert("RGBA")
+        if self._scene_base is None:
+            # The backdrop under the dome, kept until the backdrop, theme or layout changes.
+            base = Image.new("RGB", size, self._palette.background)
+            if self._backdrop is not None:
+                base.paste(self._backdrop.image, (-left, -top))
+            self._scene_base = base.convert("RGBA")
+        # Left as RGBA: it is opaque, and Tk takes it as quickly as RGB.
+        scene = self._scene_base.copy()
         scene.alpha_composite(art.resize(size, Image.Resampling.NEAREST))
-        scene = scene.convert("RGB")
         if self._scene_photo is None:
             self._scene_photo = ImageTk.PhotoImage(scene)
             self.create_image(left, top, anchor="nw", image=self._scene_photo, tags="scene")

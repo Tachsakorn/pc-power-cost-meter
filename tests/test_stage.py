@@ -151,6 +151,30 @@ def test_static_scene_draws_once_per_state(
     assert scene_draws(stage, scene_pastes) == before + 1
 
 
+def test_scene_corners_follow_the_backdrop_after_a_theme_change(
+    window: ctk.CTk,
+    art: SceneArt,
+    backdrops: list[Backdrop],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pasted: list[Image.Image] = []
+    original = ImageTk.PhotoImage.paste
+
+    def paste(photo: ImageTk.PhotoImage, image: Image.Image, *args: Any) -> None:
+        pasted.append(image.copy())
+        original(photo, image, *args)
+
+    monkeypatch.setattr(ImageTk.PhotoImage, "paste", paste)
+    stage = make_stage(window, art)
+
+    for palette, daylight in ((LIGHT, True), (DARK, False)):
+        stage.set_theme(palette, daylight)
+        pump(window)
+        left, top, _, _ = stage.bbox("scene")
+        corner = backdrops[-1].image.convert("RGBA").getpixel((left, top))
+        assert pasted[-1].getpixel((0, 0)) == corner
+
+
 def test_turning_animation_back_on_resumes_ticking(window: ctk.CTk, art: SceneArt) -> None:
     stage = make_stage(window, art, animate=False)
 
