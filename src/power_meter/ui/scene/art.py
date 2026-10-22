@@ -26,6 +26,7 @@ NATIVE: Final = (128, 160)
 _CANOPY_FRAMES: Final = (0, 1, 0, 2)
 _CANOPY_STEP_TICKS: Final = 3
 _RING_STEP_DEGREES: Final = 10
+_LAYER_PHASES: Final = 4
 _AIR: Final = frozenset({INDEX["air"], INDEX["air2"]})
 _SOIL: Final = frozenset({INDEX["soil0"], INDEX["soil1"], INDEX["soil2"]})
 _RING_GROUND: Final = _AIR | _SOIL
@@ -158,6 +159,7 @@ class SceneArt:
         box = back.getbbox()
         self.bottom = box[3] if box else height
         self._looks: dict[tuple[SceneState, bool], _Look] = {}
+        self._layers: dict[tuple[SceneState, int], Image.Image] = {}
 
     @classmethod
     def bundled(cls) -> "SceneArt":
@@ -180,13 +182,9 @@ class SceneArt:
             tick = 0
         look = self._look(state, daylight)
         effects = _EFFECTS[state]
-        core = self.layout.core
-        scene = self._back.copy()
-        _draw_glow(scene, core, effects.glow, tick)
-        _draw_rings(scene, core, effects.rings, tick)
-        _draw_haze(scene, effects.haze)
+        scene = self._layer(state, tick).copy()
         _draw_particles(scene, effects.particles, tick, self.layout.routes)
-        _draw_sparks(scene, core, self.layout.air_band, effects.sparks, tick)
+        _draw_sparks(scene, self.layout.core, self.layout.air_band, effects.sparks, tick)
         scene.putpalette(look.palette)
         image = scene.convert("RGBA")
 
@@ -198,6 +196,25 @@ class SceneArt:
         if not daylight:
             self.creatures.draw_fireflies(image, state, tick)
         return image
+
+    def _layer(self, state: SceneState, tick: int) -> Image.Image:
+        """The back with the state's glow, rings and haze. Do not draw on it.
+
+        These follow the 4-pixel dither, and the rings move a pixel every 2 ticks, so they
+        repeat every `_LAYER_PHASES` steps and each phase is drawn only once.
+        """
+        phase = (tick // 2) % _LAYER_PHASES
+        key = (state, phase)
+        layer = self._layers.get(key)
+        if layer is None:
+            effects = _EFFECTS[state]
+            core = self.layout.core
+            layer = self._back.copy()
+            _draw_glow(layer, core, effects.glow, 2 * phase)
+            _draw_rings(layer, core, effects.rings, 2 * phase)
+            _draw_haze(layer, effects.haze)
+            self._layers[key] = layer
+        return layer
 
     def _look(self, state: SceneState, daylight: bool) -> _Look:
         key = (state, daylight)

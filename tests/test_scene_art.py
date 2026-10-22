@@ -5,6 +5,7 @@ from importlib import resources
 import pytest
 from PIL import Image, ImageChops
 
+from power_meter.ui.scene import art as art_module
 from power_meter.ui.scene.art import NATIVE, SceneArt
 from power_meter.ui.scene.creatures import RABBIT, RABBIT_SLEEP, SPRITE_ROLES
 from power_meter.ui.scene.dither import bayer4
@@ -166,6 +167,26 @@ def test_static_frame_ignores_the_tick(art: SceneArt) -> None:
     assert art.frame(SceneState.HIGH, 0, False, False) == art.frame(
         SceneState.HIGH, 37, False, False
     )
+
+
+def test_drawing_other_frames_leaves_a_frame_unchanged() -> None:
+    art = SceneArt.bundled()
+    first = art.frame(SceneState.HIGH, 5, False, True)
+    for tick in range(16):
+        art.frame(SceneState.HIGH, tick, tick % 2 == 0, True)
+
+    assert art.frame(SceneState.HIGH, 5, False, True) == first
+
+
+def test_glow_rings_and_haze_are_drawn_once_per_phase(monkeypatch: pytest.MonkeyPatch) -> None:
+    drawn: list[float] = []
+    monkeypatch.setattr(art_module, "_draw_haze", lambda _scene, density: drawn.append(density))
+    art = SceneArt.bundled()
+    for tick in range(64):
+        art.frame(SceneState.HIGH, tick, False, True)
+
+    # The dither repeats every 4 pixels and the rings move one pixel every 2 ticks.
+    assert len(drawn) == 4
 
 
 def test_animation_moves_particles_and_leaves(art: SceneArt) -> None:
