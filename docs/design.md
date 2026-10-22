@@ -116,6 +116,7 @@ sampler thread (every 1.0 s, monotonic clock)
 Tk main loop (after() every 250 ms)
   tariff.rate_at(now) for the window's current settings ──► RateInfo
   sampler.latest() + settings + RateInfo ──► build_view_model() ──► MainView.render(view_model)
+      (skipped when the state, settings, rate and date are those last shown)
   sampler.latest() ──► StateTracker.update() ──► Stage.show_scene(state, hover text)
 
 Stage (after() every 125 ms, while the window is visible and animation is on)
@@ -357,7 +358,7 @@ The animals and fireflies are drawn on the coloured frame. The order is floor an
 
 **Scale.** Integer only: `pixel_size = max(1, 360 × k // 168)`, with `k` the display scaling, drawn with nearest-neighbour scaling (see Power ring). The ring is centred in the left column and the dome is placed by whole native pixels around it, so there are no half-pixels and no smoothing. The backdrop uses the same `pixel_size`. If the display scaling changes while the window is open, for example when it moves to another monitor, the scene column, `pixel_size`, the ring and the labels around it, the rules and bars, and the backdrop are recomputed from the new `k`.
 
-**Rendering.** The coloured canopy frames and glass are kept per state and time of day, so a frame is one palette change on the floor plus a few composites and sprite pixels. Each frame is composited with Pillow from the backdrop behind the scene and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The hover text is a canvas item in its own box. The power ring is a separate image placed above the scene, since it overlaps the corners of the scene's square.
+**Rendering.** The coloured canopy frames and glass are kept per state and time of day, so a frame is one palette change on the floor plus a few composites and sprite pixels. The glow, rings and haze follow the 4 × 4 dither and the rings move a pixel every other step, so the floor with them repeats every four phases; each state draws those four phases once and keeps them, and a frame only adds its particles and sparks. Each frame is composited with Pillow from the backdrop behind the scene, which is cut out once per backdrop, and the scaled art, then pasted into one `PhotoImage` that is updated in place rather than replaced. The hover text is a canvas item in its own box. The power ring is a separate image placed above the scene, since it overlaps the corners of the scene's square.
 
 ### Animation
 
